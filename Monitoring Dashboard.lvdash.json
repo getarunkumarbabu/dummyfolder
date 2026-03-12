@@ -4,10 +4,18 @@
       "name": "ds_job_run_timeline",
       "displayName": "job_run_timeline",
       "queryLines": [
-        "SELECT workspace_id, job_id, run_id, period_start_time, period_end_time, result_state\n",
-        "FROM system.lakeflow.job_run_timeline\n",
-        "WHERE result_state IS NOT NULL\n",
-        "  AND period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS"
+        "SELECT \n",
+        "  t1.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) AS workspace_name,\n",
+        "  t1.job_id, \n",
+        "  t1.run_id, \n",
+        "  t1.period_start_time, \n",
+        "  t1.period_end_time, \n",
+        "  t1.result_state\n",
+        "FROM system.lakeflow.job_run_timeline t1\n",
+        "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
+        "WHERE t1.result_state IS NOT NULL\n",
+        "  AND t1.period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS"
       ]
     },
     {
@@ -32,11 +40,13 @@
         ")\n",
         "SELECT\n",
         "  t1.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) AS workspace_name,\n",
         "  COUNT(DISTINCT t1.job_id)  AS num_jobs,\n",
         "  COUNT(DISTINCT t1.run_id)  AS num_runs,\n",
         "  FIRST(t2.list_cost)        AS list_cost\n",
         "FROM system.lakeflow.job_run_timeline t1\n",
         "LEFT JOIN jobs_usage_per_workspace t2 USING (workspace_id)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "WHERE period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
@@ -61,6 +71,7 @@
         "SELECT\n",
         "  FIRST(t2.name)                                                    AS name,\n",
         "  t1.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING))       AS workspace_name,\n",
         "  t1.job_id,\n",
         "  COUNT(*)                                                          AS runs,\n",
         "  SUM(is_failure)                                                   AS failures,\n",
@@ -68,6 +79,7 @@
         "  MAX(t1.last_seen_date)                                            AS last_seen_date\n",
         "FROM terminal_statuses t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "GROUP BY ALL\n",
         "ORDER BY failures DESC"
       ]
@@ -103,12 +115,14 @@
         "  t2.name,\n",
         "  t1.job_id,\n",
         "  t1.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) AS workspace_name,\n",
         "  t1.runs,\n",
         "  t1.run_as,\n",
         "  SUM(t1.list_cost) AS list_cost,\n",
         "  t1.last_seen_date\n",
         "FROM list_cost_per_job t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
       ]
@@ -152,6 +166,7 @@
         ")\n",
         "SELECT\n",
         "  u.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(u.workspace_id AS STRING)) AS workspace_name,\n",
         "  u.pipeline_id,\n",
         "  FIRST(p.name)               AS pipeline_name,\n",
         "  u.update_id,\n",
@@ -161,6 +176,7 @@
         "  u.cause\n",
         "FROM system.lakeflow.pipeline_update_timeline u\n",
         "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON u.workspace_id = w.workspace_id\n",
         "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
         "ORDER BY u.update_start_time DESC"
       ]
@@ -175,11 +191,13 @@
         ")\n",
         "SELECT\n",
         "  u.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(u.workspace_id AS STRING)) AS workspace_name,\n",
         "  u.pipeline_id,\n",
         "  FIRST(p.name) AS pipeline_name,\n",
         "  COUNT(*)       AS failed_updates\n",
         "FROM system.lakeflow.pipeline_update_timeline u\n",
         "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON u.workspace_id = w.workspace_id\n",
         "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
         "  AND UPPER(u.update_state) IN ('FAILED','CANCELED')\n",
         "GROUP BY ALL\n",
@@ -191,22 +209,24 @@
       "displayName": "clusters_active",
       "queryLines": [
         "SELECT\n",
-        "  workspace_id,\n",
-        "  cluster_id,\n",
-        "  cluster_name,\n",
-        "  owned_by,\n",
-        "  cluster_source,\n",
-        "  driver_node_type,\n",
-        "  worker_node_type,\n",
-        "  worker_count,\n",
-        "  min_autoscale_workers,\n",
-        "  max_autoscale_workers,\n",
-        "  auto_termination_minutes,\n",
-        "  create_time,\n",
-        "  dbr_version\n",
-        "FROM system.compute.clusters\n",
-        "WHERE delete_time IS NULL\n",
-        "ORDER BY create_time DESC"
+        "  c.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) AS workspace_name,\n",
+        "  c.cluster_id,\n",
+        "  c.cluster_name,\n",
+        "  c.owned_by,\n",
+        "  c.cluster_source,\n",
+        "  c.driver_node_type,\n",
+        "  c.worker_node_type,\n",
+        "  c.worker_count,\n",
+        "  c.min_autoscale_workers,\n",
+        "  c.max_autoscale_workers,\n",
+        "  c.auto_termination_minutes,\n",
+        "  c.create_time,\n",
+        "  c.dbr_version\n",
+        "FROM system.compute.clusters c\n",
+        "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
+        "WHERE c.delete_time IS NULL\n",
+        "ORDER BY c.create_time DESC"
       ]
     },
     {
@@ -216,7 +236,8 @@
         "SELECT\n",
         "  DATE_TRUNC('DAY', usage_start_time)                               AS day,\n",
         "  billing_origin_product,\n",
-        "  workspace_id,\n",
+        "  t1.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING))       AS workspace_name,\n",
         "  ROUND(SUM(usage_quantity * list_prices.pricing.default), 2)       AS list_cost\n",
         "FROM system.billing.usage t1\n",
         "INNER JOIN system.billing.list_prices list_prices\n",
@@ -224,8 +245,9 @@
         " AND t1.sku_name = list_prices.sku_name\n",
         " AND t1.usage_start_time >= list_prices.price_start_time\n",
         " AND (t1.usage_end_time <= list_prices.price_end_time OR list_prices.price_end_time IS NULL)\n",
+        "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "WHERE t1.usage_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
-        "GROUP BY 1, 2, 3\n",
+        "GROUP BY 1, 2, 3, 4\n",
         "ORDER BY 1"
       ]
     }
@@ -463,8 +485,8 @@
                       "expression": "`day`"
                     },
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "sum(list_cost)",
@@ -494,8 +516,8 @@
                   }
                 },
                 "color": {
-                  "fieldName": "workspace_id",
-                  "displayName": "Workspace ID",
+                  "fieldName": "workspace_name",
+                  "displayName": "Workspace Name",
                   "scale": {
                     "type": "categorical"
                   }
@@ -525,8 +547,8 @@
                   "datasetName": "ds_job_run_cost_agg",
                   "fields": [
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "num_jobs",
@@ -551,7 +573,7 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "workspace_id",
+                    "fieldName": "workspace_name",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
                     "imageTitleTemplate": "{{ @ }}",
@@ -565,14 +587,14 @@
                     "displayAs": "string",
                     "visible": true,
                     "order": 0,
-                    "title": "Workspace ID",
+                    "title": "Workspace Name",
                     "allowSearch": true,
                     "alignContent": "left",
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "displayName": "workspace_id"
+                    "displayName": "workspace_name"
                   },
                   {
                     "fieldName": "num_jobs",
@@ -688,8 +710,8 @@
                   "datasetName": "ds_highest_failure_jobs",
                   "fields": [
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "name",
@@ -726,7 +748,7 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "workspace_id",
+                    "fieldName": "workspace_name",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
                     "imageTitleTemplate": "{{ @ }}",
@@ -740,14 +762,14 @@
                     "displayAs": "string",
                     "visible": true,
                     "order": 0,
-                    "title": "Workspace ID",
+                    "title": "Workspace Name",
                     "allowSearch": true,
                     "alignContent": "left",
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "displayName": "workspace_id"
+                    "displayName": "workspace_name"
                   },
                   {
                     "fieldName": "name",
@@ -930,8 +952,8 @@
                   "datasetName": "ds_most_expensive_jobs",
                   "fields": [
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "name",
@@ -968,7 +990,7 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "workspace_id",
+                    "fieldName": "workspace_name",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
                     "imageTitleTemplate": "{{ @ }}",
@@ -982,14 +1004,14 @@
                     "displayAs": "string",
                     "visible": true,
                     "order": 0,
-                    "title": "Workspace ID",
+                    "title": "Workspace Name",
                     "allowSearch": true,
                     "alignContent": "left",
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "displayName": "workspace_id"
+                    "displayName": "workspace_name"
                   },
                   {
                     "fieldName": "name",
@@ -1327,8 +1349,8 @@
                   "datasetName": "ds_pipeline_failures",
                   "fields": [
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "pipeline_name",
@@ -1353,7 +1375,7 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "workspace_id",
+                    "fieldName": "workspace_name",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
                     "imageTitleTemplate": "{{ @ }}",
@@ -1367,14 +1389,14 @@
                     "displayAs": "string",
                     "visible": true,
                     "order": 0,
-                    "title": "Workspace ID",
+                    "title": "Workspace Name",
                     "allowSearch": true,
                     "alignContent": "left",
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "displayName": "workspace_id"
+                    "displayName": "workspace_name"
                   },
                   {
                     "fieldName": "pipeline_name",
@@ -1488,8 +1510,8 @@
                   "datasetName": "ds_clusters_active",
                   "fields": [
                     {
-                      "name": "workspace_id",
-                      "expression": "`workspace_id`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
                     },
                     {
                       "name": "cluster_id",
@@ -1542,7 +1564,7 @@
               "encodings": {
                 "columns": [
                   {
-                    "fieldName": "workspace_id",
+                    "fieldName": "workspace_name",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
                     "imageTitleTemplate": "{{ @ }}",
@@ -1556,14 +1578,14 @@
                     "displayAs": "string",
                     "visible": true,
                     "order": 0,
-                    "title": "Workspace ID",
+                    "title": "Workspace Name",
                     "allowSearch": true,
                     "alignContent": "left",
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "displayName": "workspace_id"
+                    "displayName": "workspace_name"
                   },
                   {
                     "fieldName": "cluster_name",
