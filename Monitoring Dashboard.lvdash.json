@@ -1,15 +1,1577 @@
 {
-  "pages": [
+  "datasets": [
     {
-      "name": "aed92610",
-      "displayName": "Untitled page",
-      "pageType": "PAGE_TYPE_CANVAS"
+      "name": "ds_job_run_timeline",
+      "displayName": "job_run_timeline",
+      "queryLines": [
+        "SELECT workspace_id, job_id, run_id, period_start_time, period_end_time, result_state\n",
+        "FROM system.lakeflow.job_run_timeline\n",
+        "WHERE result_state IS NOT NULL\n",
+        "  AND period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS"
+      ]
+    },
+    {
+      "name": "ds_job_run_cost_agg",
+      "displayName": "job_run_cost_agg_30d",
+      "queryLines": [
+        "WITH jobs_usage_with_list_cost AS (\n",
+        "  SELECT t1.*,\n",
+        "         t1.usage_quantity * list_prices.pricing.default AS list_cost\n",
+        "  FROM system.billing.usage t1\n",
+        "  INNER JOIN system.billing.list_prices list_prices\n",
+        "    ON t1.cloud = list_prices.cloud\n",
+        "   AND t1.sku_name = list_prices.sku_name\n",
+        "   AND t1.usage_start_time >= list_prices.price_start_time\n",
+        "   AND (t1.usage_end_time <= list_prices.price_end_time OR list_prices.price_end_time IS NULL)\n",
+        "  WHERE t1.sku_name LIKE '%JOBS%'\n",
+        "    AND usage_date >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "),\n",
+        "jobs_usage_per_workspace AS (\n",
+        "  SELECT workspace_id, SUM(list_cost) AS list_cost\n",
+        "  FROM jobs_usage_with_list_cost GROUP BY ALL\n",
+        ")\n",
+        "SELECT\n",
+        "  t1.workspace_id,\n",
+        "  COUNT(DISTINCT t1.job_id)  AS num_jobs,\n",
+        "  COUNT(DISTINCT t1.run_id)  AS num_runs,\n",
+        "  FIRST(t2.list_cost)        AS list_cost\n",
+        "FROM system.lakeflow.job_run_timeline t1\n",
+        "LEFT JOIN jobs_usage_per_workspace t2 USING (workspace_id)\n",
+        "WHERE period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "GROUP BY ALL\n",
+        "ORDER BY list_cost DESC"
+      ]
+    },
+    {
+      "name": "ds_highest_failure_jobs",
+      "displayName": "highest_failure_jobs_30d",
+      "queryLines": [
+        "WITH terminal_statuses AS (\n",
+        "  SELECT workspace_id, job_id,\n",
+        "    CASE WHEN result_state IN ('ERROR','FAILED','TIMED_OUT') THEN 1 ELSE 0 END AS is_failure,\n",
+        "    period_end_time AS last_seen_date\n",
+        "  FROM system.lakeflow.job_run_timeline\n",
+        "  WHERE result_state IS NOT NULL\n",
+        "    AND period_end_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "),\n",
+        "most_recent_jobs AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER(PARTITION BY workspace_id, job_id ORDER BY change_time DESC) AS rn\n",
+        "  FROM system.lakeflow.jobs QUALIFY rn = 1\n",
+        ")\n",
+        "SELECT\n",
+        "  FIRST(t2.name)                                                    AS name,\n",
+        "  t1.workspace_id,\n",
+        "  t1.job_id,\n",
+        "  COUNT(*)                                                          AS runs,\n",
+        "  SUM(is_failure)                                                   AS failures,\n",
+        "  (1 - COALESCE(TRY_DIVIDE(SUM(is_failure), COUNT(*)), 0)) * 100    AS success_ratio,\n",
+        "  MAX(t1.last_seen_date)                                            AS last_seen_date\n",
+        "FROM terminal_statuses t1\n",
+        "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
+        "GROUP BY ALL\n",
+        "ORDER BY failures DESC"
+      ]
+    },
+    {
+      "name": "ds_most_expensive_jobs",
+      "displayName": "most_expensive_jobs_30d",
+      "queryLines": [
+        "WITH list_cost_per_job AS (\n",
+        "  SELECT\n",
+        "    t1.workspace_id,\n",
+        "    t1.usage_metadata.job_id,\n",
+        "    COUNT(DISTINCT t1.usage_metadata.job_run_id) AS runs,\n",
+        "    SUM(t1.usage_quantity * list_prices.pricing.default) AS list_cost,\n",
+        "    FIRST(identity_metadata.run_as, TRUE) AS run_as,\n",
+        "    MAX(t1.usage_end_time) AS last_seen_date\n",
+        "  FROM system.billing.usage t1\n",
+        "  INNER JOIN system.billing.list_prices list_prices\n",
+        "    ON t1.cloud = list_prices.cloud\n",
+        "   AND t1.sku_name = list_prices.sku_name\n",
+        "   AND t1.usage_start_time >= list_prices.price_start_time\n",
+        "   AND (t1.usage_end_time <= list_prices.price_end_time OR list_prices.price_end_time IS NULL)\n",
+        "  WHERE t1.sku_name LIKE '%JOBS%'\n",
+        "    AND t1.usage_metadata.job_id IS NOT NULL\n",
+        "    AND t1.usage_date >= CURRENT_DATE() - INTERVAL 30 DAY\n",
+        "  GROUP BY ALL\n",
+        "),\n",
+        "most_recent_jobs AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER(PARTITION BY workspace_id, job_id ORDER BY change_time DESC) AS rn\n",
+        "  FROM system.lakeflow.jobs QUALIFY rn = 1\n",
+        ")\n",
+        "SELECT\n",
+        "  t2.name,\n",
+        "  t1.job_id,\n",
+        "  t1.workspace_id,\n",
+        "  t1.runs,\n",
+        "  t1.run_as,\n",
+        "  SUM(t1.list_cost) AS list_cost,\n",
+        "  t1.last_seen_date\n",
+        "FROM list_cost_per_job t1\n",
+        "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
+        "GROUP BY ALL\n",
+        "ORDER BY list_cost DESC"
+      ]
+    },
+    {
+      "name": "ds_billing_30_60_days",
+      "displayName": "billing_30_60_days_spend",
+      "queryLines": [
+        "WITH jobs_usage_with_list_cost AS (\n",
+        "  SELECT t1.*,\n",
+        "         t1.usage_quantity * list_prices.pricing.default AS list_cost\n",
+        "  FROM system.billing.usage t1\n",
+        "  INNER JOIN system.billing.list_prices list_prices\n",
+        "    ON t1.cloud = list_prices.cloud\n",
+        "   AND t1.sku_name = list_prices.sku_name\n",
+        "   AND t1.usage_start_time >= list_prices.price_start_time\n",
+        "   AND (t1.usage_end_time <= list_prices.price_end_time OR list_prices.price_end_time IS NULL)\n",
+        "  WHERE t1.sku_name LIKE '%JOBS%'\n",
+        ")\n",
+        "SELECT\n",
+        "  sku_name,\n",
+        "  SUM(list_cost) AS spend,\n",
+        "  SUM(CASE WHEN usage_end_time BETWEEN DATE_ADD(CURRENT_DATE(), -30) AND CURRENT_DATE()                 THEN list_cost ELSE 0 END) AS Last30DaySpend,\n",
+        "  SUM(CASE WHEN usage_end_time BETWEEN DATE_ADD(CURRENT_DATE(), -60) AND DATE_ADD(CURRENT_DATE(), -31) THEN list_cost ELSE 0 END) AS Last30to60DaySpend,\n",
+        "  TRY_DIVIDE(\n",
+        "    SUM(CASE WHEN usage_end_time BETWEEN DATE_ADD(CURRENT_DATE(), -30) AND CURRENT_DATE()                 THEN list_cost ELSE 0 END)\n",
+        "    - SUM(CASE WHEN usage_end_time BETWEEN DATE_ADD(CURRENT_DATE(), -60) AND DATE_ADD(CURRENT_DATE(), -31) THEN list_cost ELSE 0 END),\n",
+        "    SUM(CASE WHEN usage_end_time BETWEEN DATE_ADD(CURRENT_DATE(), -60) AND DATE_ADD(CURRENT_DATE(), -31) THEN list_cost ELSE 0 END)\n",
+        "  ) * 100 AS Last30DayGrowth\n",
+        "FROM jobs_usage_with_list_cost\n",
+        "GROUP BY ALL"
+      ]
+    },
+    {
+      "name": "ds_pipeline_updates",
+      "displayName": "pipeline_update_timeline_30d",
+      "queryLines": [
+        "WITH most_recent_pipelines AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER(PARTITION BY workspace_id, pipeline_id ORDER BY change_time DESC) AS rn\n",
+        "  FROM system.lakeflow.pipelines QUALIFY rn = 1\n",
+        ")\n",
+        "SELECT\n",
+        "  u.workspace_id,\n",
+        "  u.pipeline_id,\n",
+        "  FIRST(p.name)               AS pipeline_name,\n",
+        "  u.update_id,\n",
+        "  u.update_state,\n",
+        "  u.update_start_time,\n",
+        "  u.update_end_time,\n",
+        "  u.cause\n",
+        "FROM system.lakeflow.pipeline_update_timeline u\n",
+        "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
+        "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "ORDER BY u.update_start_time DESC"
+      ]
+    },
+    {
+      "name": "ds_pipeline_failures",
+      "displayName": "pipeline_failures_30d",
+      "queryLines": [
+        "WITH most_recent_pipelines AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER(PARTITION BY workspace_id, pipeline_id ORDER BY change_time DESC) AS rn\n",
+        "  FROM system.lakeflow.pipelines QUALIFY rn = 1\n",
+        ")\n",
+        "SELECT\n",
+        "  u.workspace_id,\n",
+        "  u.pipeline_id,\n",
+        "  FIRST(p.name) AS pipeline_name,\n",
+        "  COUNT(*)       AS failed_updates\n",
+        "FROM system.lakeflow.pipeline_update_timeline u\n",
+        "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
+        "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "  AND UPPER(u.update_state) IN ('FAILED','CANCELED')\n",
+        "GROUP BY ALL\n",
+        "ORDER BY failed_updates DESC"
+      ]
+    },
+    {
+      "name": "ds_clusters_active",
+      "displayName": "clusters_active",
+      "queryLines": [
+        "SELECT\n",
+        "  workspace_id,\n",
+        "  cluster_id,\n",
+        "  cluster_name,\n",
+        "  owned_by,\n",
+        "  cluster_source,\n",
+        "  driver_node_type,\n",
+        "  worker_node_type,\n",
+        "  worker_count,\n",
+        "  min_autoscale_workers,\n",
+        "  max_autoscale_workers,\n",
+        "  auto_termination_minutes,\n",
+        "  create_time,\n",
+        "  dbr_version\n",
+        "FROM system.compute.clusters\n",
+        "WHERE delete_time IS NULL\n",
+        "ORDER BY create_time DESC"
+      ]
+    },
+    {
+      "name": "ds_billing_daily_timeseries",
+      "displayName": "billing_daily_timeseries_30d",
+      "queryLines": [
+        "SELECT\n",
+        "  DATE_TRUNC('DAY', usage_start_time)                               AS day,\n",
+        "  billing_origin_product,\n",
+        "  workspace_id,\n",
+        "  ROUND(SUM(usage_quantity * list_prices.pricing.default), 2)       AS list_cost\n",
+        "FROM system.billing.usage t1\n",
+        "INNER JOIN system.billing.list_prices list_prices\n",
+        "  ON t1.cloud = list_prices.cloud\n",
+        " AND t1.sku_name = list_prices.sku_name\n",
+        " AND t1.usage_start_time >= list_prices.price_start_time\n",
+        " AND (t1.usage_end_time <= list_prices.price_end_time OR list_prices.price_end_time IS NULL)\n",
+        "WHERE t1.usage_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "GROUP BY 1, 2, 3\n",
+        "ORDER BY 1"
+      ]
     }
   ],
-  "uiSettings": {
-    "theme": {
-      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+  "pages": [
+    {
+      "name": "page_overview",
+      "displayName": "Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_title_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:36px;line-height:1.4;font-family:Georgia;\">&#x1F4CA; Multi-Workspace Monitoring Dashboard</span></span>",
+                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:14px;color:#666;\">Jobs &bull; Pipelines &bull; Clusters &bull; Billing &mdash; powered by Databricks System Catalog</span></span>"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "w_counter_30d_spend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_billing_30_60_days",
+                  "fields": [
+                    {
+                      "name": "sum(Last30DaySpend)",
+                      "expression": "SUM(`Last30DaySpend`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Last30DaySpend)",
+                  "displayName": "30-Day $list Spend"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-Day $list Spend (Jobs)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "w_counter_30_60_spend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_billing_30_60_days",
+                  "fields": [
+                    {
+                      "name": "sum(Last30to60DaySpend)",
+                      "expression": "SUM(`Last30to60DaySpend`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Last30to60DaySpend)",
+                  "displayName": "30-60 Day $list Spend"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-60 Day $list Spend (Jobs)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "w_counter_30d_growth",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_billing_30_60_days",
+                  "fields": [
+                    {
+                      "name": "sum(Last30DayGrowth)",
+                      "expression": "SUM(`Last30DayGrowth`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(Last30DayGrowth)",
+                  "displayName": "30-Day Spend Growth %"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "30-Day Spend Growth %"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "w_daily_run_status_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_job_run_timeline",
+                  "fields": [
+                    {
+                      "name": "daily(period_end_time)",
+                      "expression": "DATE_TRUNC(\"DAY\", `period_end_time`)"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    },
+                    {
+                      "name": "count(run_id)",
+                      "expression": "COUNT(`run_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(period_end_time)",
+                  "displayName": "Date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(run_id)",
+                  "displayName": "Run Count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "result_state",
+                  "displayName": "Result State",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      { "value": "SUCCEEDED", "color": "#00A972" },
+                      { "value": "FAILED",    "color": "#FF3621" },
+                      { "value": "ERROR",     "color": "#E92828" },
+                      { "value": "TIMED_OUT", "color": "#919191" },
+                      { "value": "SKIPPED",   "color": "#8BCAE7" }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Daily Job Run Status — Last 30 Days",
+                "showDescription": true,
+                "description": "Stacked by result state across all workspaces"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w_billing_daily_line",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_billing_daily_timeseries",
+                  "fields": [
+                    {
+                      "name": "day",
+                      "expression": "`day`"
+                    },
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "sum(list_cost)",
+                      "expression": "SUM(`list_cost`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "day",
+                  "displayName": "Day",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(list_cost)",
+                  "displayName": "$list Cost",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "workspace_id",
+                  "displayName": "Workspace ID",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Daily $list Cost by Workspace — Last 30 Days",
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w_jobs_workspace_summary_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_job_run_cost_agg",
+                  "fields": [
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "num_jobs",
+                      "expression": "`num_jobs`"
+                    },
+                    {
+                      "name": "num_runs",
+                      "expression": "`num_runs`"
+                    },
+                    {
+                      "name": "list_cost",
+                      "expression": "`list_cost`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace ID",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_id"
+                  },
+                  {
+                    "fieldName": "num_jobs",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Jobs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "num_jobs"
+                  },
+                  {
+                    "fieldName": "num_runs",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Runs (30d)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "num_runs"
+                  },
+                  {
+                    "fieldName": "list_cost",
+                    "numberFormat": "$0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "$list Cost",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "list_cost"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Jobs Summary by Workspace — Last 30 Days",
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 17,
+            "width": 6,
+            "height": 8
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
     },
-    "applyModeEnabled": false
-  }
-}
+    {
+      "name": "page_jobs",
+      "displayName": "Jobs",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_highest_failure_jobs_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_highest_failure_jobs",
+                  "fields": [
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "name",
+                      "expression": "`name`"
+                    },
+                    {
+                      "name": "job_id",
+                      "expression": "`job_id`"
+                    },
+                    {
+                      "name": "runs",
+                      "expression": "`runs`"
+                    },
+                    {
+                      "name": "failures",
+                      "expression": "`failures`"
+                    },
+                    {
+                      "name": "success_ratio",
+                      "expression": "`success_ratio`"
+                    },
+                    {
+                      "name": "last_seen_date",
+                      "expression": "`last_seen_date`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace ID",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_id"
+                  },
+                  {
+                    "fieldName": "name",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Job Name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "name"
+                  },
+                  {
+                    "fieldName": "job_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Job ID",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "job_id"
+                  },
+                  {
+                    "fieldName": "runs",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Runs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "runs"
+                  },
+                  {
+                    "fieldName": "failures",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Failures",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "failures"
+                  },
+                  {
+                    "fieldName": "success_ratio",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Success Ratio %",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "success_ratio"
+                  },
+                  {
+                    "fieldName": "last_seen_date",
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Last Seen",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_seen_date"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Highest Failure Jobs — Last 30 Days",
+                "showDescription": true,
+                "description": "Jobs ranked by failure count. Ordered by most failures first."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_most_expensive_jobs_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_most_expensive_jobs",
+                  "fields": [
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "name",
+                      "expression": "`name`"
+                    },
+                    {
+                      "name": "job_id",
+                      "expression": "`job_id`"
+                    },
+                    {
+                      "name": "runs",
+                      "expression": "`runs`"
+                    },
+                    {
+                      "name": "run_as",
+                      "expression": "`run_as`"
+                    },
+                    {
+                      "name": "list_cost",
+                      "expression": "`list_cost`"
+                    },
+                    {
+                      "name": "last_seen_date",
+                      "expression": "`last_seen_date`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace ID",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_id"
+                  },
+                  {
+                    "fieldName": "name",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Job Name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "name"
+                  },
+                  {
+                    "fieldName": "job_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Job ID",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "job_id"
+                  },
+                  {
+                    "fieldName": "runs",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Runs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "runs"
+                  },
+                  {
+                    "fieldName": "run_as",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Run As",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "run_as"
+                  },
+                  {
+                    "fieldName": "list_cost",
+                    "numberFormat": "$0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "$list Cost",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "list_cost"
+                  },
+                  {
+                    "fieldName": "last_seen_date",
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Last Seen",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_seen_date"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Most Expensive Jobs — Last 30 Days",
+                "showDescription": true,
+                "description": "Ordered by highest $list cost in the last 30 days."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_top10_failure_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_highest_failure_jobs",
+                  "fields": [
+                    {
+                      "name": "name",
+                      "expression": "`name`"
+                    },
+                    {
+                      "name": "failures",
+                      "expression": "`failures`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "failures",
+                  "displayName": "Failures",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "name",
+                  "displayName": "Job Name",
+                  "axis": {
+                    "title": "Job Name"
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "x-reversed"
+                    }
+                  }
+                },
+                "color": {
+                  "fieldName": "failures",
+                  "scale": {
+                    "type": "quantitative",
+                    "colorRamp": {
+                      "mode": "scheme",
+                      "scheme": "reds"
+                    }
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top Failing Jobs (Bar) — Last 30 Days",
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "page_pipelines",
+      "displayName": "Pipelines",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_pipeline_status_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_pipeline_updates",
+                  "fields": [
+                    {
+                      "name": "daily(update_start_time)",
+                      "expression": "DATE_TRUNC(\"DAY\", `update_start_time`)"
+                    },
+                    {
+                      "name": "update_state",
+                      "expression": "`update_state`"
+                    },
+                    {
+                      "name": "count(update_id)",
+                      "expression": "COUNT(`update_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(update_start_time)",
+                  "displayName": "Date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(update_id)",
+                  "displayName": "Updates",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "update_state",
+                  "displayName": "Update State",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      { "value": "COMPLETED", "color": "#00A972" },
+                      { "value": "FAILED",    "color": "#FF3621" },
+                      { "value": "CANCELED",  "color": "#919191" },
+                      { "value": "RUNNING",   "color": "#8BCAE7" }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Daily Pipeline Update Status — Last 30 Days",
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "w_pipeline_failures_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_pipeline_failures",
+                  "fields": [
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "pipeline_name",
+                      "expression": "`pipeline_name`"
+                    },
+                    {
+                      "name": "pipeline_id",
+                      "expression": "`pipeline_id`"
+                    },
+                    {
+                      "name": "failed_updates",
+                      "expression": "`failed_updates`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace ID",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_id"
+                  },
+                  {
+                    "fieldName": "pipeline_name",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Pipeline Name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "pipeline_name"
+                  },
+                  {
+                    "fieldName": "pipeline_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Pipeline ID",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "pipeline_id"
+                  },
+                  {
+                    "fieldName": "failed_updates",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Failed Updates",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "failed_updates"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "Top Failing Pipelines — Last 30 Days",
+                "showDescription": false
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 9
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "page_clusters",
+      "displayName": "Clusters",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_clusters_active_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_clusters_active",
+                  "fields": [
+                    {
+                      "name": "workspace_id",
+                      "expression": "`workspace_id`"
+                    },
+                    {
+                      "name": "cluster_id",
+                      "expression": "`cluster_id`"
+                    },
+                    {
+                      "name": "cluster_name",
+                      "expression": "`cluster_name`"
+                    },
+                    {
+                      "name": "owned_by",
+                      "expression": "`owned_by`"
+                    },
+                    {
+                      "name": "cluster_source",
+                      "expression": "`cluster_source`"
+                    },
+                    {
+                      "name": "driver_node_type",
+                      "expression": "`driver_node_type`"
+                    },
+                    {
+                      "name": "worker_node_type",
+                      "expression": "`worker_node_type`"
+                    },
+                    {
+                      "name": "worker_count",
+                      "expression": "`worker_count`"
+                    },
+                    {
+                      "name": "auto_termination_minutes",
+                      "expression": "`auto_termination_minutes`"
+                    },
+                    {
+                      "name": "create_time",
+                      "expression": "`create_time`"
+                    },
+                    {
+                      "name": "dbr_version",
+                      "expression": "`dbr_version`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_id",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace ID",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_id"
+                  },
+                  {
+                    "fieldName": "cluster_name",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}
