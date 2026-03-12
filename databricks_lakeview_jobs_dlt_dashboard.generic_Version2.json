@@ -1,0 +1,293 @@
+{
+  "name": "Databricks Observability - Jobs & DLT (Generic)",
+  "description": "Generic Lakeview dashboard template for monitoring Databricks Jobs and Delta Live Tables (pipelines): runs, failures, and DBU usage/cost placeholders. You MUST edit the SQL queries to match your workspace's system table schema/table names.",
+  "version": 1,
+  "parameters": [
+    {
+      "name": "p_date_start",
+      "title": "Start date (inclusive)",
+      "type": "date",
+      "default": "2026-03-01"
+    },
+    {
+      "name": "p_date_end",
+      "title": "End date (inclusive)",
+      "type": "date",
+      "default": "2026-03-12"
+    },
+    {
+      "name": "p_workspace_id",
+      "title": "Workspace ID (optional)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "p_job_name",
+      "title": "Job name contains (optional)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "p_pipeline_name",
+      "title": "Pipeline name contains (optional)",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "name": "p_dbu_to_usd",
+      "title": "DBU to USD rate (optional placeholder)",
+      "type": "number",
+      "default": 0
+    }
+  ],
+  "datasets": [
+    {
+      "name": "ds_job_runs_daily",
+      "type": "sql",
+      "query": "-- TODO: Replace system.<SCHEMA>.jobs_job_runs with your workspace system table.\n-- Expected columns (generic): workspace_id, job_id, job_name, run_id, run_start_time, run_end_time, result_state, run_duration_ms\nWITH base AS (\n  SELECT\n    date_trunc('day', run_start_time) AS day,\n    workspace_id,\n    job_id,\n    job_name,\n    run_id,\n    result_state,\n    run_duration_ms\n  FROM system.<SCHEMA>.jobs_job_runs\n  WHERE run_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n    AND run_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n    AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n    AND (('{{p_job_name}}' = '') OR lower(job_name) LIKE concat('%', lower('{{p_job_name}}'), '%'))\n)\nSELECT\n  day,\n  workspace_id,\n  job_id,\n  job_name,\n  COUNT(*) AS runs,\n  SUM(CASE WHEN result_state = 'SUCCESS' THEN 1 ELSE 0 END) AS success_runs,\n  SUM(CASE WHEN result_state IN ('FAILED', 'TIMEDOUT') THEN 1 ELSE 0 END) AS failed_runs,\n  SUM(CASE WHEN result_state IN ('CANCELED', 'CANCELLED') THEN 1 ELSE 0 END) AS canceled_runs,\n  AVG(run_duration_ms)/1000.0 AS avg_duration_s,\n  percentile_approx(run_duration_ms/1000.0, 0.95) AS p95_duration_s\nFROM base\nGROUP BY 1,2,3,4\nORDER BY day ASC"
+    },
+    {
+      "name": "ds_job_failures",
+      "type": "sql",
+      "query": "-- TODO: Replace system.<SCHEMA>.jobs_job_run_tasks (or equivalent) with your workspace system table.\n-- Expected columns (generic): run_start_time, workspace_id, job_id, job_name, run_id, task_key, result_state, termination_code, error_message\nSELECT\n  run_start_time,\n  date_trunc('day', run_start_time) AS day,\n  workspace_id,\n  job_id,\n  job_name,\n  run_id,\n  task_key,\n  result_state,\n  termination_code,\n  error_message\nFROM system.<SCHEMA>.jobs_job_run_tasks\nWHERE run_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n  AND run_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n  AND result_state IN ('FAILED', 'TIMEDOUT')\n  AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n  AND (('{{p_job_name}}' = '') OR lower(job_name) LIKE concat('%', lower('{{p_job_name}}'), '%'))\nORDER BY run_start_time DESC"
+    },
+    {
+      "name": "ds_dbu_usage_daily",
+      "type": "sql",
+      "query": "-- TODO: Replace system.<SCHEMA>.billing_usage (or equivalent) with your workspace system table.\n-- Expected columns (generic): usage_start_time, workspace_id, cluster_id, dbu\nSELECT\n  date_trunc('day', usage_start_time) AS day,\n  workspace_id,\n  cluster_id,\n  SUM(dbu) AS dbu\nFROM system.<SCHEMA>.billing_usage\nWHERE usage_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n  AND usage_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n  AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\nGROUP BY 1,2,3\nORDER BY day ASC"
+    },
+    {
+      "name": "ds_job_cost_daily",
+      "type": "sql",
+      "query": "-- Generic attribution: joins job runs -> cluster_id -> daily DBU usage.\n-- This is approximate (best when jobs use job clusters; shared clusters will be noisy).\n-- TODO: Replace system.<SCHEMA>.jobs_job_runs and system.<SCHEMA>.billing_usage with your system tables.\nWITH runs AS (\n  SELECT\n    date_trunc('day', run_start_time) AS day,\n    workspace_id,\n    job_id,\n    job_name,\n    cluster_id\n  FROM system.<SCHEMA>.jobs_job_runs\n  WHERE run_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n    AND run_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n    AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n    AND (('{{p_job_name}}' = '') OR lower(job_name) LIKE concat('%', lower('{{p_job_name}}'), '%'))\n), usage AS (\n  SELECT\n    date_trunc('day', usage_start_time) AS day,\n    workspace_id,\n    cluster_id,\n    SUM(dbu) AS dbu\n  FROM system.<SCHEMA>.billing_usage\n  WHERE usage_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n    AND usage_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n    AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n  GROUP BY 1,2,3\n)\nSELECT\n  r.day,\n  r.workspace_id,\n  r.job_id,\n  r.job_name,\n  SUM(u.dbu) AS dbu_attributed,\n  (SUM(u.dbu) * CAST('{{p_dbu_to_usd}}' AS DOUBLE)) AS usd_attributed\nFROM runs r\nJOIN usage u\n  ON u.workspace_id = r.workspace_id\n AND u.cluster_id = r.cluster_id\n AND u.day = r.day\nGROUP BY 1,2,3,4\nORDER BY day ASC"
+    },
+    {
+      "name": "ds_dlt_updates_daily",
+      "type": "sql",
+      "query": "-- TODO: Replace system.<SCHEMA>.dlt_pipeline_updates with your workspace system table.\n-- Expected columns (generic): update_start_time, workspace_id, pipeline_id, pipeline_name, update_id, update_state\nSELECT\n  date_trunc('day', update_start_time) AS day,\n  workspace_id,\n  pipeline_id,\n  pipeline_name,\n  COUNT(*) AS updates,\n  SUM(CASE WHEN update_state IN ('COMPLETED', 'SUCCESS') THEN 1 ELSE 0 END) AS completed,\n  SUM(CASE WHEN update_state IN ('FAILED', 'CANCELED', 'CANCELLED') THEN 1 ELSE 0 END) AS failed_or_canceled\nFROM system.<SCHEMA>.dlt_pipeline_updates\nWHERE update_start_time >= CAST('{{p_date_start}}' AS TIMESTAMP)\n  AND update_start_time <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n  AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n  AND (('{{p_pipeline_name}}' = '') OR lower(pipeline_name) LIKE concat('%', lower('{{p_pipeline_name}}'), '%'))\nGROUP BY 1,2,3,4\nORDER BY day ASC"
+    },
+    {
+      "name": "ds_dlt_failures",
+      "type": "sql",
+      "query": "-- TODO: Replace system.<SCHEMA>.dlt_pipeline_events with your workspace system table.\n-- Expected columns (generic): workspace_id, pipeline_id, pipeline_name, update_id, event_timestamp, event_type, message\nSELECT\n  workspace_id,\n  pipeline_id,\n  pipeline_name,\n  update_id,\n  event_timestamp,\n  event_type,\n  message\nFROM system.<SCHEMA>.dlt_pipeline_events\nWHERE event_timestamp >= CAST('{{p_date_start}}' AS TIMESTAMP)\n  AND event_timestamp <  CAST(date_add('{{p_date_end}}', 1) AS TIMESTAMP)\n  AND (('{{p_workspace_id}}' = '') OR CAST(workspace_id AS STRING) = '{{p_workspace_id}}')\n  AND (('{{p_pipeline_name}}' = '') OR lower(pipeline_name) LIKE concat('%', lower('{{p_pipeline_name}}'), '%'))\n  AND (\n    lower(event_type) LIKE '%error%'\n    OR lower(message) LIKE '%error%'\n    OR lower(event_type) LIKE '%fail%'\n    OR lower(message) LIKE '%fail%'\n  )\nORDER BY event_timestamp DESC"
+    }
+  ],
+  "pages": [
+    {
+      "name": "Summary",
+      "layout": "grid",
+      "widgets": [
+        {
+          "type": "kpi",
+          "title": "Total Job Runs",
+          "dataset": "ds_job_runs_daily",
+          "value": "SUM(runs)"
+        },
+        {
+          "type": "kpi",
+          "title": "Failed Job Runs",
+          "dataset": "ds_job_runs_daily",
+          "value": "SUM(failed_runs)"
+        },
+        {
+          "type": "kpi",
+          "title": "Job Failure Rate",
+          "dataset": "ds_job_runs_daily",
+          "value": "CASE WHEN SUM(runs) = 0 THEN 0 ELSE (SUM(failed_runs) / SUM(runs)) END",
+          "format": "percent"
+        },
+        {
+          "type": "kpi",
+          "title": "DBUs (Attributed to Jobs)",
+          "dataset": "ds_job_cost_daily",
+          "value": "SUM(dbu_attributed)"
+        },
+        {
+          "type": "line",
+          "title": "Job Runs per Day",
+          "dataset": "ds_job_runs_daily",
+          "x": "day",
+          "y": "SUM(runs)",
+          "series": "job_name"
+        },
+        {
+          "type": "line",
+          "title": "Failed Runs per Day",
+          "dataset": "ds_job_runs_daily",
+          "x": "day",
+          "y": "SUM(failed_runs)",
+          "series": "job_name"
+        },
+        {
+          "type": "line",
+          "title": "DBU per Day (Attributed to Jobs)",
+          "dataset": "ds_job_cost_daily",
+          "x": "day",
+          "y": "SUM(dbu_attributed)",
+          "series": "job_name"
+        },
+        {
+          "type": "bar",
+          "title": "Top Jobs by DBU (Attributed)",
+          "dataset": "ds_job_cost_daily",
+          "x": "job_name",
+          "y": "SUM(dbu_attributed)",
+          "sort": { "by": "SUM(dbu_attributed)", "direction": "desc" },
+          "limit": 10
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "layout": "grid",
+      "widgets": [
+        {
+          "type": "table",
+          "title": "Job Runs Daily (by Job)",
+          "dataset": "ds_job_runs_daily",
+          "columns": [
+            "day",
+            "workspace_id",
+            "job_id",
+            "job_name",
+            "runs",
+            "success_runs",
+            "failed_runs",
+            "canceled_runs",
+            "avg_duration_s",
+            "p95_duration_s"
+          ]
+        },
+        {
+          "type": "table",
+          "title": "Job Failures (Drilldown)",
+          "dataset": "ds_job_failures",
+          "columns": [
+            "run_start_time",
+            "day",
+            "workspace_id",
+            "job_id",
+            "job_name",
+            "run_id",
+            "task_key",
+            "result_state",
+            "termination_code",
+            "error_message"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cost",
+      "layout": "grid",
+      "widgets": [
+        {
+          "type": "table",
+          "title": "Job Cost Daily (DBU + optional USD)",
+          "dataset": "ds_job_cost_daily",
+          "columns": [
+            "day",
+            "workspace_id",
+            "job_id",
+            "job_name",
+            "dbu_attributed",
+            "usd_attributed"
+          ]
+        },
+        {
+          "type": "line",
+          "title": "USD per Day (if p_dbu_to_usd set)",
+          "dataset": "ds_job_cost_daily",
+          "x": "day",
+          "y": "SUM(usd_attributed)",
+          "series": "job_name"
+        },
+        {
+          "type": "table",
+          "title": "Raw DBU Usage Daily (by Cluster)",
+          "dataset": "ds_dbu_usage_daily",
+          "columns": [
+            "day",
+            "workspace_id",
+            "cluster_id",
+            "dbu"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "DLT / Pipelines",
+      "layout": "grid",
+      "widgets": [
+        {
+          "type": "kpi",
+          "title": "Total Pipeline Updates",
+          "dataset": "ds_dlt_updates_daily",
+          "value": "SUM(updates)"
+        },
+        {
+          "type": "kpi",
+          "title": "Failed/Canceled Updates",
+          "dataset": "ds_dlt_updates_daily",
+          "value": "SUM(failed_or_canceled)"
+        },
+        {
+          "type": "kpi",
+          "title": "Pipeline Failure Rate",
+          "dataset": "ds_dlt_updates_daily",
+          "value": "CASE WHEN SUM(updates) = 0 THEN 0 ELSE (SUM(failed_or_canceled) / SUM(updates)) END",
+          "format": "percent"
+        },
+        {
+          "type": "line",
+          "title": "Pipeline Updates per Day",
+          "dataset": "ds_dlt_updates_daily",
+          "x": "day",
+          "y": "SUM(updates)",
+          "series": "pipeline_name"
+        },
+        {
+          "type": "bar",
+          "title": "Failed/Canceled Updates per Day",
+          "dataset": "ds_dlt_updates_daily",
+          "x": "day",
+          "y": "SUM(failed_or_canceled)",
+          "series": "pipeline_name"
+        },
+        {
+          "type": "table",
+          "title": "DLT Update Summary (Daily)",
+          "dataset": "ds_dlt_updates_daily",
+          "columns": [
+            "day",
+            "workspace_id",
+            "pipeline_id",
+            "pipeline_name",
+            "updates",
+            "completed",
+            "failed_or_canceled"
+          ]
+        },
+        {
+          "type": "table",
+          "title": "DLT Failures (Events Drilldown)",
+          "dataset": "ds_dlt_failures",
+          "columns": [
+            "event_timestamp",
+            "workspace_id",
+            "pipeline_id",
+            "pipeline_name",
+            "update_id",
+            "event_type",
+            "message"
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "IMPORT/USE: In Databricks, go to Dashboards (Lakeview) > Import and select this JSON file (or paste).",
+    "REQUIRED EDIT: Replace every occurrence of system.<SCHEMA>.* with the correct system schema in your workspace.",
+    "If you want a working (non-template) JSON for your workspace, run: SHOW SCHEMAS IN system; and SHOW TABLES IN system.<schema>; and paste results. I will regenerate the JSON with exact table names."
+  ]
+}
