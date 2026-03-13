@@ -309,7 +309,16 @@
       "keyword": "cluster_source_filter",
       "displayName": "Cluster Source",
       "dataType": "STRING",
-      "defaultValue": "All"
+      "defaultValue": "All",
+      "possibleValues": {
+        "values": [
+          "All",
+          "INTERACTIVE",
+          "JOB",
+          "API",
+          "UI"
+        ]
+      }
     }
   ],
   "pages": [
