@@ -352,6 +352,50 @@
       ]
     }
   ],
+  "parameters": [
+    {
+      "name": "workspace_filter_summary",
+      "keyword": "workspace_filter_summary",
+      "displayName": "Workspace Name (Summary)",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    },
+    {
+      "name": "workspace_filter_failures",
+      "keyword": "workspace_filter_failures",
+      "displayName": "Workspace Name (Failures)",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    },
+    {
+      "name": "workspace_filter_longrunning",
+      "keyword": "workspace_filter_longrunning",
+      "displayName": "Workspace Name (Long Running)",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    },
+    {
+      "name": "workspace_filter_expensive",
+      "keyword": "workspace_filter_expensive",
+      "displayName": "Workspace Name (Expensive)",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    },
+    {
+      "name": "workspace_filter",
+      "keyword": "workspace_filter",
+      "displayName": "Workspace Name",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    },
+    {
+      "name": "source_filter",
+      "keyword": "source_filter",
+      "displayName": "Cluster Source",
+      "dataType": "STRING",
+      "defaultValue": "All"
+    }
+  ],
   "pages": [
     {
       "name": "page_overview",
