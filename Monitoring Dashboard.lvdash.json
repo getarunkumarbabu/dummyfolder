@@ -269,6 +269,15 @@
         "WHERE c.delete_time IS NULL\n",
         "  AND (':cluster_source_filter' = 'All' OR c.cluster_source = :cluster_source_filter)\n",
         "ORDER BY c.create_time DESC"
+      ],
+      "parameters": [
+        {
+          "name": "cluster_source_filter",
+          "keyword": "cluster_source_filter",
+          "displayName": "Cluster Source",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
       ]
     },
     {
