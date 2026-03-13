@@ -56,9 +56,13 @@
         {
           "name": "workspace_filter_summary",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "workspace_filter_summary",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "workspace_filter_summary",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -101,9 +105,13 @@
         {
           "name": "workspace_filter_failures",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "workspace_filter_failures",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "workspace_filter_failures",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -156,9 +164,13 @@
         {
           "name": "workspace_filter_longrunning",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "workspace_filter_longrunning",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "workspace_filter_longrunning",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -212,9 +224,13 @@
         {
           "name": "workspace_filter_expensive",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "workspace_filter_expensive",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "workspace_filter_expensive",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -328,9 +344,13 @@
         {
           "name": "workspace_filter",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "workspace_filter",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "workspace_filter",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -338,9 +358,13 @@
         {
           "name": "source_filter",
 <<<<<<< HEAD
+<<<<<<< HEAD
           "keyword": "source_filter",
 =======
 >>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
+=======
+          "keyword": "source_filter",
+>>>>>>> a83f25d3ed7670c0b53694602a29f054c1146e92
           "displayName": "Cluster Source",
           "dataType": "STRING",
           "defaultValue": "All"
