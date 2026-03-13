@@ -212,15 +212,15 @@
         "  u.pipeline_id,\n",
         "  p.name                      AS pipeline_name,\n",
         "  u.update_id,\n",
-        "  u.update_state,\n",
-        "  u.update_start_time,\n",
-        "  u.update_end_time,\n",
+        "  u.update_type,\n",
+        "  u.period_start_time,\n",
+        "  u.period_end_time,\n",
         "  u.cause\n",
         "FROM system.lakeflow.pipeline_update_timeline u\n",
         "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON u.workspace_id = w.workspace_id\n",
-        "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
-        "ORDER BY u.update_start_time DESC"
+        "WHERE u.period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "ORDER BY u.period_start_time DESC"
       ]
     },
     {
@@ -235,13 +235,13 @@
         "  u.workspace_id,\n",
         "  COALESCE(w.workspace_name, CAST(u.workspace_id AS STRING)) AS workspace_name,\n",
         "  u.pipeline_id,\n",
-        "  FIRST(p.name) AS pipeline_name,\n",
+        "  p.name AS pipeline_name,\n",
         "  COUNT(*)       AS failed_updates\n",
         "FROM system.lakeflow.pipeline_update_timeline u\n",
         "LEFT JOIN most_recent_pipelines p USING (workspace_id, pipeline_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON u.workspace_id = w.workspace_id\n",
-        "WHERE u.update_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
-        "  AND UPPER(u.update_state) IN ('FAILED','CANCELED')\n",
+        "WHERE u.period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "  AND UPPER(u.update_type) IN ('FAILED','CANCELED')\n",
         "GROUP BY ALL\n",
         "ORDER BY failed_updates DESC"
       ]
@@ -1274,6 +1274,112 @@
             "spec": {
               "version": 2,
               "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Job Name",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "displayName": "name"
+                  },
+                  {
+                    "fieldName": "workspace_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Workspace",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "displayName": "workspace_name"
+                  },
+                  {
+                    "fieldName": "job_id",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Job ID",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "displayName": "job_id"
+                  },
+                  {
+                    "fieldName": "total_runs",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Total Runs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "displayName": "total_runs"
+                  },
+                  {
+                    "fieldName": "avg_duration_minutes",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Duration (min)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "displayName": "avg_duration_minutes"
+                  },
+                  {
+                    "fieldName": "max_duration_minutes",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Max Duration (min)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "displayName": "max_duration_minutes"
+                  },
+                  {
+                    "fieldName": "p95_duration_minutes",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 6,
+                    "title": "P95 Duration (min)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "displayName": "p95_duration_minutes"
+                  },
+                  {
+                    "fieldName": "last_run_time",
+                    "dateFormat": "YYYY-MM-DD HH:mm:ss",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 7,
+                    "title": "Last Run Time",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "displayName": "last_run_time"
+                  }
+                ]
+              },
               "allowHTMLByDefault": false,
               "itemsPerPage": 25,
               "paginationSize": "default",
@@ -1311,12 +1417,12 @@
                   "datasetName": "ds_pipeline_updates",
                   "fields": [
                     {
-                      "name": "daily(update_start_time)",
-                      "expression": "DATE_TRUNC(\"DAY\", `update_start_time`)"
+                      "name": "daily(period_start_time)",
+                      "expression": "DATE_TRUNC(\"DAY\", `period_start_time`)"
                     },
                     {
-                      "name": "update_state",
-                      "expression": "`update_state`"
+                      "name": "update_type",
+                      "expression": "`update_type`"
                     },
                     {
                       "name": "count(update_id)",
@@ -1332,7 +1438,7 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "daily(update_start_time)",
+                  "fieldName": "daily(period_start_time)",
                   "displayName": "Date",
                   "scale": {
                     "type": "temporal"
@@ -1346,8 +1452,8 @@
                   }
                 },
                 "color": {
-                  "fieldName": "update_state",
-                  "displayName": "Update State",
+                  "fieldName": "update_type",
+                  "displayName": "Update Type",
                   "scale": {
                     "type": "categorical",
                     "mappings": [
