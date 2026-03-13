@@ -249,6 +249,13 @@
       "name": "ds_clusters_active",
       "displayName": "clusters_active",
       "queryLines": [
+        "WITH latest_cluster_records AS (\n",
+        "  SELECT\n",
+        "    c.*,\n",
+        "    ROW_NUMBER() OVER (PARTITION BY c.cluster_id ORDER BY c.change_time DESC) AS rn\n",
+        "  FROM system.compute.clusters c\n",
+        "  WHERE c.delete_time IS NULL\n",
+        ")\n",
         "SELECT\n",
         "  c.workspace_id,\n",
         "  COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) AS workspace_name,\n",
@@ -264,9 +271,9 @@
         "  c.auto_termination_minutes,\n",
         "  c.create_time,\n",
         "  c.dbr_version\n",
-        "FROM system.compute.clusters c\n",
+        "FROM latest_cluster_records c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
-        "WHERE c.delete_time IS NULL\n",
+        "WHERE c.rn = 1\n",
         "ORDER BY c.create_time DESC"
       ]
     },
@@ -304,8 +311,7 @@
             "name": "w_title_header",
             "multilineTextboxSpec": {
               "lines": [
-                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:36px;line-height:1.4;font-family:Georgia;\">Multi-Workspace Monitoring Dashboard</span></span>",
-                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:14px;color:#666;\">Jobs - Pipelines - Clusters - Billing - powered by Databricks System Catalog</span></span>"
+                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:36px;line-height:1.4;font-family:Georgia;\">Multi-Workspace Monitoring Dashboard</span></span>"
               ]
             }
           },
