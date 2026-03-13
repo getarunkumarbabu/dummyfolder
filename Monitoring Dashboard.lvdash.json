@@ -51,15 +51,6 @@
         "  AND (':workspace_filter_summary' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_summary)\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
-      ],
-      "parameters": [
-        {
-          "name": "workspace_filter_summary",
-          "keyword": "workspace_filter_summary",
-          "displayName": "Workspace Name",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        }
       ]
     },
     {
@@ -93,15 +84,6 @@
         "WHERE (':workspace_filter_failures' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_failures)\n",
         "GROUP BY ALL\n",
         "ORDER BY failures DESC"
-      ],
-      "parameters": [
-        {
-          "name": "workspace_filter_failures",
-          "keyword": "workspace_filter_failures",
-          "displayName": "Workspace Name",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        }
       ]
     },
     {
@@ -145,15 +127,6 @@
         "HAVING AVG(jr.duration_minutes) >= 10\n",
         "ORDER BY avg_duration_minutes DESC\n",
         "LIMIT 50"
-      ],
-      "parameters": [
-        {
-          "name": "workspace_filter_longrunning",
-          "keyword": "workspace_filter_longrunning",
-          "displayName": "Workspace Name",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        }
       ]
     },
     {
@@ -198,15 +171,6 @@
         "WHERE (':workspace_filter_expensive' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_expensive)\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
-      ],
-      "parameters": [
-        {
-          "name": "workspace_filter_expensive",
-          "keyword": "workspace_filter_expensive",
-          "displayName": "Workspace Name",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        }
       ]
     },
     {
@@ -311,22 +275,6 @@
         "  AND (':workspace_filter' = 'All' OR COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) = :workspace_filter)\n",
         "  AND (':source_filter' = 'All' OR c.cluster_source = :source_filter)\n",
         "ORDER BY c.create_time DESC"
-      ],
-      "parameters": [
-        {
-          "name": "workspace_filter",
-          "keyword": "workspace_filter",
-          "displayName": "Workspace Name",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        },
-        {
-          "name": "source_filter",
-          "keyword": "source_filter",
-          "displayName": "Cluster Source",
-          "dataType": "STRING",
-          "defaultValue": "All"
-        }
       ]
     },
     {
