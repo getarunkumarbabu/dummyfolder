@@ -24,7 +24,7 @@
       "queryLines": [
         "WITH jobs_usage_with_list_cost AS (\n",
         "  SELECT t1.*,\n",
-        "         t1.usage_quantity * list_prices.pricing.default AS list_cost\n",
+        "         t1.usage_quantity * list_prices.pricing.default * 0.73 AS list_cost\n",
         "  FROM system.billing.usage t1\n",
         "  INNER JOIN system.billing.list_prices list_prices\n",
         "    ON t1.cloud = list_prices.cloud\n",
@@ -48,8 +48,17 @@
         "LEFT JOIN jobs_usage_per_workspace t2 USING (workspace_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "WHERE period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "  AND ('{{ workspace_filter_summary }}' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = '{{ workspace_filter_summary }}')\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
+      ],
+      "parameters": [
+        {
+          "name": "workspace_filter_summary",
+          "displayName": "Workspace Name",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
       ]
     },
     {
@@ -80,8 +89,68 @@
         "FROM terminal_statuses t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
+        "WHERE ('{{ workspace_filter_failures }}' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = '{{ workspace_filter_failures }}')\n",
         "GROUP BY ALL\n",
         "ORDER BY failures DESC"
+      ],
+      "parameters": [
+        {
+          "name": "workspace_filter_failures",
+          "displayName": "Workspace Name",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
+      ]
+    },
+    {
+      "name": "ds_long_running_jobs",
+      "displayName": "long_running_jobs_30d",
+      "queryLines": [
+        "WITH job_runs AS (\n",
+        "  SELECT\n",
+        "    workspace_id,\n",
+        "    job_id,\n",
+        "    run_id,\n",
+        "    period_start_time,\n",
+        "    period_end_time,\n",
+        "    TIMESTAMPDIFF(MINUTE, period_start_time, period_end_time) AS duration_minutes,\n",
+        "    result_state\n",
+        "  FROM system.lakeflow.job_run_timeline\n",
+        "  WHERE period_end_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "    AND period_end_time IS NOT NULL\n",
+        "    AND period_start_time IS NOT NULL\n",
+        "    AND result_state IS NOT NULL\n",
+        "),\n",
+        "most_recent_jobs AS (\n",
+        "  SELECT *, ROW_NUMBER() OVER(PARTITION BY workspace_id, job_id ORDER BY change_time DESC) AS rn\n",
+        "  FROM system.lakeflow.jobs QUALIFY rn = 1\n",
+        ")\n",
+        "SELECT\n",
+        "  FIRST(j.name) AS name,\n",
+        "  jr.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(jr.workspace_id AS STRING)) AS workspace_name,\n",
+        "  jr.job_id,\n",
+        "  COUNT(*) AS total_runs,\n",
+        "  ROUND(AVG(jr.duration_minutes), 2) AS avg_duration_minutes,\n",
+        "  MAX(jr.duration_minutes) AS max_duration_minutes,\n",
+        "  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY jr.duration_minutes), 2) AS p95_duration_minutes,\n",
+        "  MAX(jr.period_end_time) AS last_run_time\n",
+        "FROM job_runs jr\n",
+        "LEFT JOIN most_recent_jobs j ON jr.workspace_id = j.workspace_id AND jr.job_id = j.job_id\n",
+        "LEFT JOIN system.access.workspaces_latest w ON jr.workspace_id = w.workspace_id\n",
+        "WHERE ('{{ workspace_filter_longrunning }}' = 'All' OR COALESCE(w.workspace_name, CAST(jr.workspace_id AS STRING)) = '{{ workspace_filter_longrunning }}')\n",
+        "GROUP BY jr.workspace_id, jr.job_id, workspace_name\n",
+        "HAVING AVG(jr.duration_minutes) >= 10\n",
+        "ORDER BY avg_duration_minutes DESC\n",
+        "LIMIT 50"
+      ],
+      "parameters": [
+        {
+          "name": "workspace_filter_longrunning",
+          "displayName": "Workspace Name",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
       ]
     },
     {
@@ -93,7 +162,7 @@
         "    t1.workspace_id,\n",
         "    t1.usage_metadata.job_id,\n",
         "    COUNT(DISTINCT t1.usage_metadata.job_run_id) AS runs,\n",
-        "    SUM(t1.usage_quantity * list_prices.pricing.default) AS list_cost,\n",
+        "    SUM(t1.usage_quantity * list_prices.pricing.default * 0.73) AS list_cost,\n",
         "    FIRST(identity_metadata.run_as, TRUE) AS run_as,\n",
         "    MAX(t1.usage_end_time) AS last_seen_date\n",
         "  FROM system.billing.usage t1\n",
@@ -123,8 +192,17 @@
         "FROM list_cost_per_job t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
+        "WHERE ('{{ workspace_filter_expensive }}' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = '{{ workspace_filter_expensive }}')\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
+      ],
+      "parameters": [
+        {
+          "name": "workspace_filter_expensive",
+          "displayName": "Workspace Name",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
       ]
     },
     {
@@ -133,7 +211,7 @@
       "queryLines": [
         "WITH jobs_usage_with_list_cost AS (\n",
         "  SELECT t1.*,\n",
-        "         t1.usage_quantity * list_prices.pricing.default AS list_cost\n",
+        "         t1.usage_quantity * list_prices.pricing.default * 0.73 AS list_cost\n",
         "  FROM system.billing.usage t1\n",
         "  INNER JOIN system.billing.list_prices list_prices\n",
         "    ON t1.cloud = list_prices.cloud\n",
@@ -226,7 +304,23 @@
         "FROM system.compute.clusters c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.delete_time IS NULL\n",
+        "  AND ('{{ workspace_filter }}' = 'All' OR COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) = '{{ workspace_filter }}')\n",
+        "  AND ('{{ source_filter }}' = 'All' OR c.cluster_source = '{{ source_filter }}')\n",
         "ORDER BY c.create_time DESC"
+      ],
+      "parameters": [
+        {
+          "name": "workspace_filter",
+          "displayName": "Workspace Name",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        },
+        {
+          "name": "source_filter",
+          "displayName": "Cluster Source",
+          "dataType": "STRING",
+          "defaultValue": "All"
+        }
       ]
     },
     {
@@ -238,7 +332,7 @@
         "  billing_origin_product,\n",
         "  t1.workspace_id,\n",
         "  COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING))       AS workspace_name,\n",
-        "  ROUND(SUM(usage_quantity * list_prices.pricing.default), 2)       AS list_cost\n",
+        "  ROUND(SUM(usage_quantity * list_prices.pricing.default * 0.73), 2)       AS list_cost\n",
         "FROM system.billing.usage t1\n",
         "INNER JOIN system.billing.list_prices list_prices\n",
         "  ON t1.cloud = list_prices.cloud\n",
@@ -1185,20 +1279,44 @@
         },
         {
           "widget": {
-            "name": "w_top10_failure_bar",
+            "name": "w_long_running_jobs",
             "queries": [
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "ds_highest_failure_jobs",
+                  "datasetName": "ds_long_running_jobs",
                   "fields": [
                     {
                       "name": "name",
                       "expression": "`name`"
                     },
                     {
-                      "name": "failures",
-                      "expression": "`failures`"
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "job_id",
+                      "expression": "`job_id`"
+                    },
+                    {
+                      "name": "total_runs",
+                      "expression": "`total_runs`"
+                    },
+                    {
+                      "name": "avg_duration_minutes",
+                      "expression": "`avg_duration_minutes`"
+                    },
+                    {
+                      "name": "max_duration_minutes",
+                      "expression": "`max_duration_minutes`"
+                    },
+                    {
+                      "name": "p95_duration_minutes",
+                      "expression": "`p95_duration_minutes`"
+                    },
+                    {
+                      "name": "last_run_time",
+                      "expression": "`last_run_time`"
                     }
                   ],
                   "disaggregated": true
@@ -1206,47 +1324,18 @@
               }
             ],
             "spec": {
-              "version": 3,
-              "widgetType": "bar",
-              "encodings": {
-                "x": {
-                  "fieldName": "failures",
-                  "displayName": "Failures",
-                  "scale": {
-                    "type": "quantitative"
-                  }
-                },
-                "y": {
-                  "fieldName": "name",
-                  "displayName": "Job Name",
-                  "axis": {
-                    "title": "Job Name"
-                  },
-                  "scale": {
-                    "type": "categorical",
-                    "sort": {
-                      "by": "x-reversed"
-                    }
-                  }
-                },
-                "color": {
-                  "fieldName": "failures",
-                  "scale": {
-                    "type": "quantitative",
-                    "colorRamp": {
-                      "mode": "scheme",
-                      "scheme": "reds"
-                    }
-                  }
-                },
-                "label": {
-                  "show": true
-                }
-              },
+              "version": 2,
+              "widgetType": "table",
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
               "frame": {
                 "showTitle": true,
-                "title": "Top Failing Jobs (Bar) — Last 30 Days",
-                "showDescription": false
+                "title": "Long Running Jobs — Last 30 Days",
+                "showDescription": true,
+                "description": "Jobs with average duration ≥ 10 minutes, ordered by average duration. Shows avg, max, and P95 execution times."
               }
             }
           },
@@ -1254,7 +1343,7 @@
             "x": 0,
             "y": 20,
             "width": 6,
-            "height": 7
+            "height": 10
           }
         }
       ],
