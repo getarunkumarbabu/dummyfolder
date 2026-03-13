@@ -331,7 +331,7 @@
         "FROM latest_cluster_records c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.rn = 1\n",
-        "  AND c.cluster_source = 'INTERACTIVE'\n",
+        "  AND c.cluster_source IN ('UI', 'API')\n",
         "  AND (c.auto_termination_minutes IS NULL OR c.auto_termination_minutes > 120)\n",
         "ORDER BY days_alive DESC"
       ]
