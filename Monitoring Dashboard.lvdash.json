@@ -298,6 +298,137 @@
         "GROUP BY 1, 2, 3, 4\n",
         "ORDER BY 1"
       ]
+    },
+    {
+      "name": "ds_idle_cluster_waste",
+      "displayName": "idle_cluster_waste",
+      "queryLines": [
+        "WITH latest_cluster_records AS (\n",
+        "  SELECT\n",
+        "    c.*,\n",
+        "    ROW_NUMBER() OVER (PARTITION BY c.cluster_id ORDER BY c.change_time DESC) AS rn\n",
+        "  FROM system.compute.clusters c\n",
+        "  WHERE c.delete_time IS NULL\n",
+        ")\n",
+        "SELECT\n",
+        "  c.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) AS workspace_name,\n",
+        "  c.cluster_id,\n",
+        "  c.cluster_name,\n",
+        "  c.owned_by,\n",
+        "  c.cluster_source,\n",
+        "  c.driver_node_type,\n",
+        "  c.worker_node_type,\n",
+        "  c.worker_count,\n",
+        "  c.auto_termination_minutes,\n",
+        "  c.create_time,\n",
+        "  ROUND(DATEDIFF(HOUR, c.create_time, CURRENT_TIMESTAMP()) / 24.0, 1) AS days_alive,\n",
+        "  CASE\n",
+        "    WHEN c.auto_termination_minutes IS NULL THEN 'NO AUTO-TERMINATION ⚠️'\n",
+        "    WHEN c.auto_termination_minutes > 120 THEN 'EXCESSIVE TIMEOUT (>2h)'\n",
+        "    ELSE 'OK'\n",
+        "  END AS risk_level\n",
+        "FROM latest_cluster_records c\n",
+        "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
+        "WHERE c.rn = 1\n",
+        "  AND c.cluster_source = 'INTERACTIVE'\n",
+        "  AND (c.auto_termination_minutes IS NULL OR c.auto_termination_minutes > 120)\n",
+        "ORDER BY days_alive DESC"
+      ]
+    },
+    {
+      "name": "ds_job_failure_root_cause",
+      "displayName": "job_failure_root_cause",
+      "queryLines": [
+        "SELECT\n",
+        "  j.job_name,\n",
+        "  j.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(j.workspace_id AS STRING)) AS workspace_name,\n",
+        "  t.result.state AS failure_state,\n",
+        "  COALESCE(t.result.state_message, 'No error message') AS error_message,\n",
+        "  COUNT(*) AS failure_count,\n",
+        "  COUNT(DISTINCT t.run_id) AS affected_runs,\n",
+        "  MAX(t.period_end_time) AS last_failure_time,\n",
+        "  MIN(t.period_start_time) AS first_failure_time\n",
+        "FROM system.lakeflow.job_run_timeline t\n",
+        "JOIN system.lakeflow.jobs j ON t.job_id = j.job_id\n",
+        "LEFT JOIN system.access.workspaces_latest w ON j.workspace_id = w.workspace_id\n",
+        "WHERE t.result.state IN ('FAILED', 'INTERNAL_ERROR', 'TIMEOUT', 'TIMEDOUT')\n",
+        "  AND t.period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "GROUP BY 1, 2, 3, 4, 5\n",
+        "HAVING failure_count >= 3\n",
+        "ORDER BY failure_count DESC\n",
+        "LIMIT 50"
+      ]
+    },
+    {
+      "name": "ds_cluster_startup_analysis",
+      "displayName": "cluster_startup_analysis",
+      "queryLines": [
+        "WITH cluster_startup AS (\n",
+        "  SELECT\n",
+        "    c.workspace_id,\n",
+        "    c.cluster_source,\n",
+        "    c.driver_node_type,\n",
+        "    c.worker_node_type,\n",
+        "    c.create_time,\n",
+        "    c.ready_time,\n",
+        "    DATEDIFF(SECOND, c.create_time, c.ready_time) AS startup_seconds\n",
+        "  FROM system.compute.clusters c\n",
+        "  WHERE c.create_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "    AND c.ready_time IS NOT NULL\n",
+        "    AND c.create_time < c.ready_time\n",
+        ")\n",
+        "SELECT\n",
+        "  s.workspace_id,\n",
+        "  COALESCE(w.workspace_name, CAST(s.workspace_id AS STRING)) AS workspace_name,\n",
+        "  s.cluster_source,\n",
+        "  s.driver_node_type,\n",
+        "  s.worker_node_type,\n",
+        "  COUNT(*) AS cluster_count,\n",
+        "  ROUND(AVG(s.startup_seconds), 1) AS avg_startup_seconds,\n",
+        "  ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY s.startup_seconds), 1) AS p50_startup_seconds,\n",
+        "  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY s.startup_seconds), 1) AS p95_startup_seconds,\n",
+        "  MAX(s.startup_seconds) AS max_startup_seconds,\n",
+        "  CASE\n",
+        "    WHEN AVG(s.startup_seconds) > 600 THEN 'VERY SLOW (>10min)'\n",
+        "    WHEN AVG(s.startup_seconds) > 300 THEN 'SLOW (>5min)'\n",
+        "    ELSE 'ACCEPTABLE'\n",
+        "  END AS performance_status\n",
+        "FROM cluster_startup s\n",
+        "LEFT JOIN system.access.workspaces_latest w ON s.workspace_id = w.workspace_id\n",
+        "GROUP BY 1, 2, 3, 4, 5\n",
+        "ORDER BY avg_startup_seconds DESC"
+      ]
+    },
+    {
+      "name": "ds_workspace_admin_changes",
+      "displayName": "workspace_admin_changes",
+      "queryLines": [
+        "SELECT\n",
+        "  event_time,\n",
+        "  workspace_id,\n",
+        "  user_identity.email AS admin_who_made_change,\n",
+        "  action_name,\n",
+        "  request_params.targetUserName AS user_affected,\n",
+        "  request_params.groupName AS group_name,\n",
+        "  CASE\n",
+        "    WHEN action_name = 'addPrincipalToGroup' THEN 'GRANTED ACCESS ✅'\n",
+        "    WHEN action_name = 'removePrincipalFromGroup' THEN 'REVOKED ACCESS ❌'\n",
+        "    ELSE action_name\n",
+        "  END AS change_type,\n",
+        "  response.status_code,\n",
+        "  CASE\n",
+        "    WHEN response.status_code = 200 THEN 'SUCCESS'\n",
+        "    ELSE 'FAILED'\n",
+        "  END AS status\n",
+        "FROM system.access.audit\n",
+        "WHERE action_name IN ('addPrincipalToGroup', 'removePrincipalFromGroup')\n",
+        "  AND request_params.groupName IN ('admins', 'users', 'account admins')\n",
+        "  AND event_date >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
+        "ORDER BY event_time DESC\n",
+        "LIMIT 200"
+      ]
     }
   ],
   "parameters": [],
@@ -2000,6 +2131,496 @@
             "y": 0,
             "width": 6,
             "height": 12
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "page_admin_operations",
+      "displayName": "Admin & Operations",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_idle_cluster_waste",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_idle_cluster_waste",
+                  "fields": [
+                    {
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "cluster_name",
+                      "expression": "`cluster_name`"
+                    },
+                    {
+                      "name": "owned_by",
+                      "expression": "`owned_by`"
+                    },
+                    {
+                      "name": "days_alive",
+                      "expression": "`days_alive`"
+                    },
+                    {
+                      "name": "auto_termination_minutes",
+                      "expression": "`auto_termination_minutes`"
+                    },
+                    {
+                      "name": "risk_level",
+                      "expression": "`risk_level`"
+                    },
+                    {
+                      "name": "driver_node_type",
+                      "expression": "`driver_node_type`"
+                    },
+                    {
+                      "name": "worker_count",
+                      "expression": "`worker_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace"
+                  },
+                  {
+                    "fieldName": "cluster_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Cluster Name"
+                  },
+                  {
+                    "fieldName": "owned_by",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Owner"
+                  },
+                  {
+                    "fieldName": "days_alive",
+                    "type": "number",
+                    "displayAs": "number",
+                    "numberFormat": "0.0",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Days Running"
+                  },
+                  {
+                    "fieldName": "auto_termination_minutes",
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Auto-Term (min)"
+                  },
+                  {
+                    "fieldName": "risk_level",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Risk Level"
+                  },
+                  {
+                    "fieldName": "driver_node_type",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Node Type"
+                  },
+                  {
+                    "fieldName": "worker_count",
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 7,
+                    "title": "Workers"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "⚠️ Idle Cluster Waste - Immediate Cost Savings",
+                "showDescription": true,
+                "description": "Interactive clusters with no auto-termination or excessive timeout (>2 hours). These are potential cost waste."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "w_job_failure_root_cause",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_job_failure_root_cause",
+                  "fields": [
+                    {
+                      "name": "job_name",
+                      "expression": "`job_name`"
+                    },
+                    {
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "failure_state",
+                      "expression": "`failure_state`"
+                    },
+                    {
+                      "name": "error_message",
+                      "expression": "`error_message`"
+                    },
+                    {
+                      "name": "failure_count",
+                      "expression": "`failure_count`"
+                    },
+                    {
+                      "name": "affected_runs",
+                      "expression": "`affected_runs`"
+                    },
+                    {
+                      "name": "last_failure_time",
+                      "expression": "`last_failure_time`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "job_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Job Name"
+                  },
+                  {
+                    "fieldName": "workspace_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Workspace"
+                  },
+                  {
+                    "fieldName": "failure_state",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Failure Type"
+                  },
+                  {
+                    "fieldName": "error_message",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Error Message"
+                  },
+                  {
+                    "fieldName": "failure_count",
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Failure Count"
+                  },
+                  {
+                    "fieldName": "affected_runs",
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Affected Runs"
+                  },
+                  {
+                    "fieldName": "last_failure_time",
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Last Failure"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "🔧 Job Failure Root Cause Analysis",
+                "showDescription": true,
+                "description": "Top failure patterns to reduce support tickets. Shows jobs with 3+ failures in last 30 days."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_cluster_startup_analysis",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cluster_startup_analysis",
+                  "fields": [
+                    {
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "cluster_source",
+                      "expression": "`cluster_source`"
+                    },
+                    {
+                      "name": "driver_node_type",
+                      "expression": "`driver_node_type`"
+                    },
+                    {
+                      "name": "cluster_count",
+                      "expression": "`cluster_count`"
+                    },
+                    {
+                      "name": "avg_startup_seconds",
+                      "expression": "`avg_startup_seconds`"
+                    },
+                    {
+                      "name": "p95_startup_seconds",
+                      "expression": "`p95_startup_seconds`"
+                    },
+                    {
+                      "name": "performance_status",
+                      "expression": "`performance_status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace"
+                  },
+                  {
+                    "fieldName": "cluster_source",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Cluster Type"
+                  },
+                  {
+                    "fieldName": "driver_node_type",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Node Type"
+                  },
+                  {
+                    "fieldName": "cluster_count",
+                    "type": "number",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "# Clusters"
+                  },
+                  {
+                    "fieldName": "avg_startup_seconds",
+                    "type": "number",
+                    "displayAs": "number",
+                    "numberFormat": "0.0",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Startup (sec)"
+                  },
+                  {
+                    "fieldName": "p95_startup_seconds",
+                    "type": "number",
+                    "displayAs": "number",
+                    "numberFormat": "0.0",
+                    "visible": true,
+                    "order": 5,
+                    "title": "P95 Startup (sec)"
+                  },
+                  {
+                    "fieldName": "performance_status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Performance"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "⚡ Cluster Startup Time Analysis",
+                "showDescription": true,
+                "description": "Identify slow cluster provisioning by node type and workspace. >5min = SLOW, >10min = VERY SLOW."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "w_workspace_admin_changes",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_workspace_admin_changes",
+                  "fields": [
+                    {
+                      "name": "event_time",
+                      "expression": "`event_time`"
+                    },
+                    {
+                      "name": "admin_who_made_change",
+                      "expression": "`admin_who_made_change`"
+                    },
+                    {
+                      "name": "user_affected",
+                      "expression": "`user_affected`"
+                    },
+                    {
+                      "name": "group_name",
+                      "expression": "`group_name`"
+                    },
+                    {
+                      "name": "change_type",
+                      "expression": "`change_type`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "event_time",
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Time"
+                  },
+                  {
+                    "fieldName": "admin_who_made_change",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Admin"
+                  },
+                  {
+                    "fieldName": "user_affected",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "User Affected"
+                  },
+                  {
+                    "fieldName": "group_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Group"
+                  },
+                  {
+                    "fieldName": "change_type",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Change Type"
+                  },
+                  {
+                    "fieldName": "status",
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Status"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "🔐 Workspace Admin Changes Audit",
+                "showDescription": true,
+                "description": "Track admin privilege changes (grants/revokes) for compliance and security monitoring."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 6,
+            "height": 10
           }
         }
       ],
