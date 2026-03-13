@@ -48,7 +48,6 @@
         "LEFT JOIN jobs_usage_per_workspace t2 USING (workspace_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
         "WHERE period_start_time >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
-        "  AND (':workspace_filter_summary' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_summary)\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
       ]
@@ -81,7 +80,6 @@
         "FROM terminal_statuses t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
-        "WHERE (':workspace_filter_failures' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_failures)\n",
         "GROUP BY ALL\n",
         "ORDER BY failures DESC"
       ]
@@ -122,7 +120,6 @@
         "FROM job_runs jr\n",
         "LEFT JOIN most_recent_jobs j ON jr.workspace_id = j.workspace_id AND jr.job_id = j.job_id\n",
         "LEFT JOIN system.access.workspaces_latest w ON jr.workspace_id = w.workspace_id\n",
-        "WHERE (':workspace_filter_longrunning' = 'All' OR COALESCE(w.workspace_name, CAST(jr.workspace_id AS STRING)) = :workspace_filter_longrunning)\n",
         "GROUP BY jr.workspace_id, jr.job_id, workspace_name\n",
         "HAVING AVG(jr.duration_minutes) >= 10\n",
         "ORDER BY avg_duration_minutes DESC\n",
@@ -168,7 +165,6 @@
         "FROM list_cost_per_job t1\n",
         "LEFT JOIN most_recent_jobs t2 USING (workspace_id, job_id)\n",
         "LEFT JOIN system.access.workspaces_latest w ON t1.workspace_id = w.workspace_id\n",
-        "WHERE (':workspace_filter_expensive' = 'All' OR COALESCE(w.workspace_name, CAST(t1.workspace_id AS STRING)) = :workspace_filter_expensive)\n",
         "GROUP BY ALL\n",
         "ORDER BY list_cost DESC"
       ]
@@ -272,8 +268,6 @@
         "FROM system.compute.clusters c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.delete_time IS NULL\n",
-        "  AND (':workspace_filter' = 'All' OR COALESCE(w.workspace_name, CAST(c.workspace_id AS STRING)) = :workspace_filter)\n",
-        "  AND (':source_filter' = 'All' OR c.cluster_source = :source_filter)\n",
         "ORDER BY c.create_time DESC"
       ]
     },
@@ -298,50 +292,6 @@
         "GROUP BY 1, 2, 3, 4\n",
         "ORDER BY 1"
       ]
-    }
-  ],
-  "parameters": [
-    {
-      "name": "workspace_filter_summary",
-      "keyword": "workspace_filter_summary",
-      "displayName": "Workspace Name (Summary)",
-      "dataType": "STRING",
-      "defaultValue": "All"
-    },
-    {
-      "name": "workspace_filter_failures",
-      "keyword": "workspace_filter_failures",
-      "displayName": "Workspace Name (Failures)",
-      "dataType": "STRING",
-      "defaultValue": "All"
-    },
-    {
-      "name": "workspace_filter_longrunning",
-      "keyword": "workspace_filter_longrunning",
-      "displayName": "Workspace Name (Long Running)",
-      "dataType": "STRING",
-      "defaultValue": "All"
-    },
-    {
-      "name": "workspace_filter_expensive",
-      "keyword": "workspace_filter_expensive",
-      "displayName": "Workspace Name (Expensive)",
-      "dataType": "STRING",
-      "defaultValue": "All"
-    },
-    {
-      "name": "workspace_filter",
-      "keyword": "workspace_filter",
-      "displayName": "Workspace Name",
-      "dataType": "STRING",
-      "defaultValue": "All"
-    },
-    {
-      "name": "source_filter",
-      "keyword": "source_filter",
-      "displayName": "Cluster Source",
-      "dataType": "STRING",
-      "defaultValue": "All"
     }
   ],
   "pages": [
