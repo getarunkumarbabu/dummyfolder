@@ -1,4 +1,4 @@
-{
+﻿{
   "datasets": [
     {
       "name": "ds_job_run_timeline",
@@ -55,7 +55,10 @@
       "parameters": [
         {
           "name": "workspace_filter_summary",
+<<<<<<< HEAD
           "keyword": "workspace_filter_summary",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -97,7 +100,10 @@
       "parameters": [
         {
           "name": "workspace_filter_failures",
+<<<<<<< HEAD
           "keyword": "workspace_filter_failures",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -149,7 +155,10 @@
       "parameters": [
         {
           "name": "workspace_filter_longrunning",
+<<<<<<< HEAD
           "keyword": "workspace_filter_longrunning",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -202,7 +211,10 @@
       "parameters": [
         {
           "name": "workspace_filter_expensive",
+<<<<<<< HEAD
           "keyword": "workspace_filter_expensive",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -315,14 +327,20 @@
       "parameters": [
         {
           "name": "workspace_filter",
+<<<<<<< HEAD
           "keyword": "workspace_filter",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
         },
         {
           "name": "source_filter",
+<<<<<<< HEAD
           "keyword": "source_filter",
+=======
+>>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Cluster Source",
           "dataType": "STRING",
           "defaultValue": "All"
