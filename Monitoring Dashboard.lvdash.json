@@ -55,10 +55,7 @@
       "parameters": [
         {
           "name": "workspace_filter_summary",
-<<<<<<< HEAD
           "keyword": "workspace_filter_summary",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -100,10 +97,7 @@
       "parameters": [
         {
           "name": "workspace_filter_failures",
-<<<<<<< HEAD
           "keyword": "workspace_filter_failures",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -155,10 +149,7 @@
       "parameters": [
         {
           "name": "workspace_filter_longrunning",
-<<<<<<< HEAD
           "keyword": "workspace_filter_longrunning",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -211,10 +202,7 @@
       "parameters": [
         {
           "name": "workspace_filter_expensive",
-<<<<<<< HEAD
           "keyword": "workspace_filter_expensive",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -327,20 +315,14 @@
       "parameters": [
         {
           "name": "workspace_filter",
-<<<<<<< HEAD
           "keyword": "workspace_filter",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Workspace Name",
           "dataType": "STRING",
           "defaultValue": "All"
         },
         {
           "name": "source_filter",
-<<<<<<< HEAD
           "keyword": "source_filter",
-=======
->>>>>>> 249daa7d79475d38bfbf617e3fc91ea81dcc2685
           "displayName": "Cluster Source",
           "dataType": "STRING",
           "defaultValue": "All"
@@ -380,8 +362,8 @@
             "name": "w_title_header",
             "multilineTextboxSpec": {
               "lines": [
-                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:36px;line-height:1.4;font-family:Georgia;\">&#x1F4CA; Multi-Workspace Monitoring Dashboard</span></span>",
-                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:14px;color:#666;\">Jobs &bull; Pipelines &bull; Clusters &bull; Billing &mdash; powered by Databricks System Catalog</span></span>"
+                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:36px;line-height:1.4;font-family:Georgia;\">Multi-Workspace Monitoring Dashboard</span></span>",
+                "<span style=\"text-align:center;display:block;\"><span style=\"font-size:14px;color:#666;\">Jobs - Pipelines - Clusters - Billing - powered by Databricks System Catalog</span></span>"
               ]
             }
           },
