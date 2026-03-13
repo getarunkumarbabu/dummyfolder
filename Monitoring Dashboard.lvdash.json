@@ -267,6 +267,7 @@
         "FROM system.compute.clusters c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.delete_time IS NULL\n",
+        "  AND (':cluster_source_filter' = 'All' OR c.cluster_source = :cluster_source_filter)\n",
         "ORDER BY c.create_time DESC"
       ]
     },
@@ -291,6 +292,15 @@
         "GROUP BY 1, 2, 3, 4\n",
         "ORDER BY 1"
       ]
+    }
+  ],
+  "parameters": [
+    {
+      "name": "cluster_source_filter",
+      "keyword": "cluster_source_filter",
+      "displayName": "Cluster Source",
+      "dataType": "STRING",
+      "defaultValue": "All"
     }
   ],
   "pages": [
