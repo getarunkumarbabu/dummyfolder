@@ -405,38 +405,9 @@
         "FROM latest_cluster_records c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.rn = 1\n",
-        "GROUP BY 1, 2, 3, 4, 5, 6, c.auto_termination_minutes\n",
+        "GROUP BY c.workspace_id, workspace_name, c.cluster_source, c.driver_node_type, c.worker_node_type, c.auto_termination_minutes\n",
         "HAVING COUNT(*) >= 2\n",
         "ORDER BY cluster_count DESC"
-      ]
-    },
-    {
-      "name": "ds_workspace_admin_changes",
-      "displayName": "workspace_admin_changes",
-      "queryLines": [
-        "SELECT\n",
-        "  event_time,\n",
-        "  workspace_id,\n",
-        "  user_identity.email AS admin_who_made_change,\n",
-        "  action_name,\n",
-        "  request_params.targetUserName AS user_affected,\n",
-        "  request_params.groupName AS group_name,\n",
-        "  CASE\n",
-        "    WHEN action_name = 'addPrincipalToGroup' THEN 'GRANTED ACCESS ✅'\n",
-        "    WHEN action_name = 'removePrincipalFromGroup' THEN 'REVOKED ACCESS ❌'\n",
-        "    ELSE action_name\n",
-        "  END AS change_type,\n",
-        "  response.status_code,\n",
-        "  CASE\n",
-        "    WHEN response.status_code = 200 THEN 'SUCCESS'\n",
-        "    ELSE 'FAILED'\n",
-        "  END AS status\n",
-        "FROM system.access.audit\n",
-        "WHERE action_name IN ('addPrincipalToGroup', 'removePrincipalFromGroup')\n",
-        "  AND request_params.groupName IN ('admins', 'users', 'account admins')\n",
-        "  AND event_date >= CURRENT_DATE() - INTERVAL 30 DAYS\n",
-        "ORDER BY event_time DESC\n",
-        "LIMIT 200"
       ]
     }
   ],
@@ -2440,10 +2411,6 @@
                       "expression": "`failure_state`"
                     },
                     {
-                      "name": "error_message",
-                      "expression": "`error_message`"
-                    },
-                    {
                       "name": "failure_count",
                       "expression": "`failure_count`"
                     },
@@ -2454,6 +2421,10 @@
                     {
                       "name": "last_failure_time",
                       "expression": "`last_failure_time`"
+                    },
+                    {
+                      "name": "first_failure_time",
+                      "expression": "`first_failure_time`"
                     }
                   ],
                   "disaggregated": true
@@ -2538,30 +2509,6 @@
                     "displayName": "failure_state"
                   },
                   {
-                    "fieldName": "error_message",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 3,
-                    "title": "Error Message",
-                    "allowSearch": true,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "error_message"
-                  },
-                  {
                     "fieldName": "failure_count",
                     "numberFormat": "0",
                     "booleanValues": ["false", "true"],
@@ -2576,7 +2523,7 @@
                     "type": "integer",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 4,
+                    "order": 3,
                     "title": "Failure Count",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -2601,7 +2548,7 @@
                     "type": "integer",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 5,
+                    "order": 4,
                     "title": "Affected Runs",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -2610,6 +2557,31 @@
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
                     "displayName": "affected_runs"
+                  },
+                  {
+                    "fieldName": "first_failure_time",
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 5,
+                    "title": "First Failure",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "first_failure_time"
                   },
                   {
                     "fieldName": "last_failure_time",
@@ -2926,217 +2898,6 @@
             "y": 18,
             "width": 6,
             "height": 8
-          }
-        },
-        {
-          "widget": {
-            "name": "w_workspace_admin_changes",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_workspace_admin_changes",
-                  "fields": [
-                    {
-                      "name": "event_time",
-                      "expression": "`event_time`"
-                    },
-                    {
-                      "name": "admin_who_made_change",
-                      "expression": "`admin_who_made_change`"
-                    },
-                    {
-                      "name": "user_affected",
-                      "expression": "`user_affected`"
-                    },
-                    {
-                      "name": "group_name",
-                      "expression": "`group_name`"
-                    },
-                    {
-                      "name": "change_type",
-                      "expression": "`change_type`"
-                    },
-                    {
-                      "name": "status",
-                      "expression": "`status`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "event_time",
-                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "datetime",
-                    "displayAs": "datetime",
-                    "visible": true,
-                    "order": 0,
-                    "title": "Time",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "event_time"
-                  },
-                  {
-                    "fieldName": "admin_who_made_change",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 1,
-                    "title": "Admin",
-                    "allowSearch": true,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "admin_who_made_change"
-                  },
-                  {
-                    "fieldName": "user_affected",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 2,
-                    "title": "User Affected",
-                    "allowSearch": true,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "user_affected"
-                  },
-                  {
-                    "fieldName": "group_name",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 3,
-                    "title": "Group",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "group_name"
-                  },
-                  {
-                    "fieldName": "change_type",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 4,
-                    "title": "Change Type",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "change_type"
-                  },
-                  {
-                    "fieldName": "status",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 5,
-                    "title": "Status",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "status"
-                  }
-                ]
-              },
-              "invisibleColumns": [],
-              "allowHTMLByDefault": false,
-              "itemsPerPage": 25,
-              "paginationSize": "default",
-              "condensed": false,
-              "withRowNumber": true,
-              "frame": {
-                "showTitle": true,
-                "title": "🔐 Workspace Admin Changes Audit",
-                "showDescription": true,
-                "description": "Track admin privilege changes (grants/revokes) for compliance and security monitoring."
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 26,
-            "width": 6,
-            "height": 10
           }
         }
       ],
