@@ -423,8 +423,18 @@
         "    workspace_id,\n",
         "    SUM(usage_quantity) AS daily_dbus\n",
         "  FROM system.billing.usage\n",
-        "  WHERE usage_start_time >= CURRENT_DATE() - INTERVAL 60 DAYS\n",
+        "  WHERE usage_start_time >= CURRENT_DATE() - INTERVAL 90 DAYS\n",
         "  GROUP BY 1, 2\n",
+        "),\n",
+        "last_month AS (\n",
+        "  SELECT\n",
+        "    workspace_id,\n",
+        "    SUM(daily_dbus) AS last_month_total_dbus,\n",
+        "    ROUND(AVG(daily_dbus), 2) AS last_month_avg_daily_dbus\n",
+        "  FROM daily_dbu\n",
+        "  WHERE usage_day >= DATE_TRUNC('MONTH', CURRENT_DATE() - INTERVAL 1 MONTH)\n",
+        "    AND usage_day < DATE_TRUNC('MONTH', CURRENT_DATE())\n",
+        "  GROUP BY workspace_id\n",
         "),\n",
         "stats AS (\n",
         "  SELECT\n",
@@ -440,6 +450,8 @@
         "SELECT\n",
         "  s.workspace_id,\n",
         "  COALESCE(w.workspace_name, CAST(s.workspace_id AS STRING)) AS workspace_name,\n",
+        "  ROUND(COALESCE(lm.last_month_total_dbus, 0), 2) AS last_month_total_dbus,\n",
+        "  ROUND(COALESCE(lm.last_month_avg_daily_dbus, 0), 2) AS last_month_avg_daily_dbus,\n",
         "  ROUND(s.avg_daily_dbus, 2) AS avg_daily_dbus,\n",
         "  ROUND(s.stddev_daily_dbus, 2) AS stddev_daily_dbus,\n",
         "  ROUND(s.min_daily_dbus, 2) AS min_daily_dbus,\n",
@@ -449,6 +461,7 @@
         "  ROUND(s.avg_daily_dbus * 30 * 0.73, 2) AS forecast_30day_list_cost\n",
         "FROM stats s\n",
         "LEFT JOIN system.access.workspaces_latest w ON s.workspace_id = w.workspace_id\n",
+        "LEFT JOIN last_month lm ON s.workspace_id = lm.workspace_id\n",
         "ORDER BY avg_daily_dbus DESC"
       ]
     },
@@ -1068,6 +1081,14 @@
                       "expression": "`workspace_name`"
                     },
                     {
+                      "name": "last_month_total_dbus",
+                      "expression": "`last_month_total_dbus`"
+                    },
+                    {
+                      "name": "last_month_avg_daily_dbus",
+                      "expression": "`last_month_avg_daily_dbus`"
+                    },
+                    {
                       "name": "avg_daily_dbus",
                       "expression": "`avg_daily_dbus`"
                     },
@@ -1120,6 +1141,56 @@
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
                     "displayName": "workspace_name"
+                  },
+                  {
+                    "fieldName": "last_month_total_dbus",
+                    "numberFormat": "0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Last Month Total DBUs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_month_total_dbus"
+                  },
+                  {
+                    "fieldName": "last_month_avg_daily_dbus",
+                    "numberFormat": "0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Last Month Avg Daily DBUs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_month_avg_daily_dbus"
                   },
                   {
                     "fieldName": "avg_daily_dbus",
@@ -3572,6 +3643,14 @@
                     {
                       "name": "workspace_name",
                       "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "last_month_total_dbus",
+                      "expression": "`last_month_total_dbus`"
+                    },
+                    {
+                      "name": "last_month_avg_daily_dbus",
+                      "expression": "`last_month_avg_daily_dbus`"
                     },
                     {
                       "name": "avg_daily_dbus",
