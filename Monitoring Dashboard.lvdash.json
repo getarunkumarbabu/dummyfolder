@@ -3558,14 +3558,7 @@
             "width": 6,
             "height": 10
           }
-        }
-      ],
-      "pageType": "PAGE_TYPE_CANVAS"
-    },
-    {
-      "name": "page_admin_operations",
-      "displayName": "Admin & Operations",
-      "layout": [
+        },
         {
           "widget": {
             "name": "w_dbu_consumption_forecast",
@@ -3776,7 +3769,7 @@
           },
           "position": {
             "x": 0,
-            "y": 0,
+            "y": 18,
             "width": 6,
             "height": 10
           }
@@ -3990,7 +3983,7 @@
           },
           "position": {
             "x": 0,
-            "y": 10,
+            "y": 28,
             "width": 6,
             "height": 10
           }
@@ -4237,7 +4230,7 @@
           },
           "position": {
             "x": 0,
-            "y": 20,
+            "y": 38,
             "width": 6,
             "height": 10
           }
