@@ -322,7 +322,6 @@
         "  c.worker_count,\n",
         "  c.auto_termination_minutes,\n",
         "  c.create_time,\n",
-        "  c.state,\n",
         "  ROUND(DATEDIFF(HOUR, c.create_time, CURRENT_TIMESTAMP()) / 24.0, 1) AS days_alive,\n",
         "  CASE\n",
         "    WHEN c.auto_termination_minutes IS NULL THEN 'NO AUTO-TERMINATION ⚠️'\n",
