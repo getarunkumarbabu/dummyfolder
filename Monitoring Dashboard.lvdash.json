@@ -322,6 +322,7 @@
         "  c.worker_count,\n",
         "  c.auto_termination_minutes,\n",
         "  c.create_time,\n",
+        "  c.state,\n",
         "  ROUND(DATEDIFF(HOUR, c.create_time, CURRENT_TIMESTAMP()) / 24.0, 1) AS days_alive,\n",
         "  CASE\n",
         "    WHEN c.auto_termination_minutes IS NULL THEN 'NO AUTO-TERMINATION ⚠️'\n",
@@ -331,6 +332,7 @@
         "FROM latest_cluster_records c\n",
         "LEFT JOIN system.access.workspaces_latest w ON c.workspace_id = w.workspace_id\n",
         "WHERE c.rn = 1\n",
+        "  AND c.delete_time IS NULL\n",
         "  AND c.cluster_source IN ('UI', 'API')\n",
         "  AND (c.auto_termination_minutes IS NULL OR c.auto_termination_minutes > 120)\n",
         "ORDER BY days_alive DESC"
