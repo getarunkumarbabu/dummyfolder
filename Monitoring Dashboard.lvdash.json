@@ -624,6 +624,192 @@
         "ORDER BY ABS(drift_percentage) DESC\n",
         "LIMIT 50"
       ]
+    },
+    {
+      "name": "ds_endpoint_usage_performance",
+      "displayName": "Endpoint Usage & Performance",
+      "queryLines": [
+        "SELECT \n",
+        "  endpoint_name,\n",
+        "  DATE_TRUNC('day', request_timestamp) as date,\n",
+        "  COUNT(*) as total_requests,\n",
+        "  SUM(CASE WHEN status_code = 200 THEN 1 ELSE 0 END) as successful_requests,\n",
+        "  ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms,\n",
+        "  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY execution_duration_ms), 2) as p95_latency_ms,\n",
+        "  ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY execution_duration_ms), 2) as p99_latency_ms,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN status_code = 200 THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate_pct\n",
+        "FROM system.serving.endpoint_usage\n",
+        "WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "GROUP BY endpoint_name, DATE_TRUNC('day', request_timestamp)\n",
+        "ORDER BY date DESC, total_requests DESC"
+      ]
+    },
+    {
+      "name": "ds_high_latency_endpoints",
+      "displayName": "High Latency Endpoints",
+      "queryLines": [
+        "WITH endpoint_stats AS (\n",
+        "  SELECT \n",
+        "    endpoint_name,\n",
+        "    ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms,\n",
+        "    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY execution_duration_ms), 2) as p95_latency_ms,\n",
+        "    COUNT(*) as request_count\n",
+        "  FROM system.serving.endpoint_usage\n",
+        "  WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "  GROUP BY endpoint_name\n",
+        ")\n",
+        "SELECT \n",
+        "  endpoint_name,\n",
+        "  avg_latency_ms,\n",
+        "  p95_latency_ms,\n",
+        "  request_count,\n",
+        "  CASE \n",
+        "    WHEN p95_latency_ms > 5000 THEN '🔴 Critical'\n",
+        "    WHEN p95_latency_ms > 2000 THEN '🟡 Warning'\n",
+        "    ELSE '🟢 Normal'\n",
+        "  END as latency_status\n",
+        "FROM endpoint_stats\n",
+        "WHERE p95_latency_ms > 1000\n",
+        "ORDER BY p95_latency_ms DESC"
+      ]
+    },
+    {
+      "name": "ds_endpoint_cost_analysis",
+      "displayName": "Endpoint Cost Analysis",
+      "queryLines": [
+        "SELECT \n",
+        "  e.endpoint_name,\n",
+        "  se.entity_name,\n",
+        "  se.entity_type,\n",
+        "  DATE_TRUNC('day', e.request_timestamp) as date,\n",
+        "  COUNT(*) as total_requests,\n",
+        "  ROUND(SUM(e.execution_duration_ms) / 1000.0 / 3600.0, 4) as total_compute_hours,\n",
+        "  ROUND(SUM(e.execution_duration_ms) / 1000.0 / 3600.0 * 0.75, 4) as estimated_dbus,\n",
+        "  ROUND(SUM(e.execution_duration_ms) / 1000.0 / 3600.0 * 0.75 * 0.55, 2) as estimated_cost_usd\n",
+        "FROM system.serving.endpoint_usage e\n",
+        "LEFT JOIN system.serving.served_entities se \n",
+        "  ON e.endpoint_name = se.endpoint_name\n",
+        "WHERE e.request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "GROUP BY e.endpoint_name, se.entity_name, se.entity_type, DATE_TRUNC('day', e.request_timestamp)\n",
+        "ORDER BY date DESC, estimated_cost_usd DESC"
+      ]
+    },
+    {
+      "name": "ds_endpoint_error_analysis",
+      "displayName": "Error Rate & Failure Analysis",
+      "queryLines": [
+        "SELECT \n",
+        "  endpoint_name,\n",
+        "  status_code,\n",
+        "  error_message,\n",
+        "  COUNT(*) as error_count,\n",
+        "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY endpoint_name), 2) as error_pct,\n",
+        "  MIN(request_timestamp) as first_occurrence,\n",
+        "  MAX(request_timestamp) as last_occurrence\n",
+        "FROM system.serving.endpoint_usage\n",
+        "WHERE \n",
+        "  request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "  AND status_code != 200\n",
+        "GROUP BY endpoint_name, status_code, error_message\n",
+        "ORDER BY error_count DESC"
+      ]
+    },
+    {
+      "name": "ds_endpoint_traffic_patterns",
+      "displayName": "Endpoint Traffic Patterns",
+      "queryLines": [
+        "SELECT \n",
+        "  endpoint_name,\n",
+        "  HOUR(request_timestamp) as hour_of_day,\n",
+        "  COUNT(*) as request_count,\n",
+        "  ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms,\n",
+        "  ROUND(AVG(input_tokens), 0) as avg_input_tokens,\n",
+        "  ROUND(AVG(output_tokens), 0) as avg_output_tokens\n",
+        "FROM system.serving.endpoint_usage\n",
+        "WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "GROUP BY endpoint_name, HOUR(request_timestamp)\n",
+        "ORDER BY endpoint_name, hour_of_day"
+      ]
+    },
+    {
+      "name": "ds_model_version_comparison",
+      "displayName": "Model Version Performance",
+      "queryLines": [
+        "SELECT \n",
+        "  e.endpoint_name,\n",
+        "  se.entity_name,\n",
+        "  se.entity_version,\n",
+        "  se.creation_timestamp as model_deployed_at,\n",
+        "  COUNT(*) as total_requests,\n",
+        "  ROUND(AVG(e.execution_duration_ms), 2) as avg_latency_ms,\n",
+        "  ROUND(100.0 * SUM(CASE WHEN e.status_code = 200 THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate_pct,\n",
+        "  ROUND(AVG(e.input_tokens + e.output_tokens), 0) as avg_total_tokens\n",
+        "FROM system.serving.endpoint_usage e\n",
+        "INNER JOIN system.serving.served_entities se \n",
+        "  ON e.endpoint_name = se.endpoint_name\n",
+        "WHERE e.request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "GROUP BY e.endpoint_name, se.entity_name, se.entity_version, se.creation_timestamp\n",
+        "ORDER BY e.endpoint_name, total_requests DESC"
+      ]
+    },
+    {
+      "name": "ds_inactive_endpoints",
+      "displayName": "Inactive or Underutilized Endpoints",
+      "queryLines": [
+        "WITH recent_usage AS (\n",
+        "  SELECT \n",
+        "    endpoint_name,\n",
+        "    MAX(request_timestamp) as last_request_time,\n",
+        "    COUNT(*) as total_requests_30d,\n",
+        "    ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms\n",
+        "  FROM system.serving.endpoint_usage\n",
+        "  WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "  GROUP BY endpoint_name\n",
+        "),\n",
+        "all_endpoints AS (\n",
+        "  SELECT DISTINCT \n",
+        "    endpoint_name,\n",
+        "    creation_timestamp\n",
+        "  FROM system.serving.served_entities\n",
+        ")\n",
+        "SELECT \n",
+        "  ae.endpoint_name,\n",
+        "  ae.creation_timestamp as endpoint_created_at,\n",
+        "  COALESCE(ru.last_request_time, ae.creation_timestamp) as last_request_time,\n",
+        "  DATEDIFF(CURRENT_DATE(), COALESCE(ru.last_request_time, ae.creation_timestamp)) as days_since_last_request,\n",
+        "  COALESCE(ru.total_requests_30d, 0) as requests_last_30_days,\n",
+        "  COALESCE(ru.avg_latency_ms, 0) as avg_latency_ms,\n",
+        "  CASE \n",
+        "    WHEN COALESCE(ru.total_requests_30d, 0) = 0 THEN '🔴 No Usage (30 days)'\n",
+        "    WHEN COALESCE(ru.total_requests_30d, 0) < 100 THEN '🟡 Low Usage (<100 req/month)'\n",
+        "    ELSE '🟢 Active'\n",
+        "  END as utilization_status\n",
+        "FROM all_endpoints ae\n",
+        "LEFT JOIN recent_usage ru ON ae.endpoint_name = ru.endpoint_name\n",
+        "ORDER BY requests_last_30_days ASC, days_since_last_request DESC"
+      ]
+    },
+    {
+      "name": "ds_token_consumption",
+      "displayName": "Token Consumption & LLM Usage",
+      "queryLines": [
+        "SELECT \n",
+        "  endpoint_name,\n",
+        "  DATE_TRUNC('day', request_timestamp) as date,\n",
+        "  COUNT(*) as total_requests,\n",
+        "  SUM(input_tokens) as total_input_tokens,\n",
+        "  SUM(output_tokens) as total_output_tokens,\n",
+        "  SUM(input_tokens + output_tokens) as total_tokens,\n",
+        "  ROUND(AVG(input_tokens), 0) as avg_input_tokens,\n",
+        "  ROUND(AVG(output_tokens), 0) as avg_output_tokens,\n",
+        "  ROUND(SUM(input_tokens) * 0.000001 + SUM(output_tokens) * 0.000002, 2) as estimated_token_cost_usd\n",
+        "FROM system.serving.endpoint_usage\n",
+        "WHERE \n",
+        "  request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "  AND (input_tokens > 0 OR output_tokens > 0)\n",
+        "GROUP BY endpoint_name, DATE_TRUNC('day', request_timestamp)\n",
+        "ORDER BY date DESC, total_tokens DESC"
+      ]
     }
   ],
   "parameters": [],
@@ -1065,279 +1251,6 @@
             "y": 17,
             "width": 6,
             "height": 8
-          }
-        },
-        {
-          "widget": {
-            "name": "w_dbu_consumption_forecast_overview",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_dbu_consumption_forecast",
-                  "fields": [
-                    {
-                      "name": "workspace_name",
-                      "expression": "`workspace_name`"
-                    },
-                    {
-                      "name": "last_month_total_dbus",
-                      "expression": "`last_month_total_dbus`"
-                    },
-                    {
-                      "name": "last_month_avg_daily_dbus",
-                      "expression": "`last_month_avg_daily_dbus`"
-                    },
-                    {
-                      "name": "avg_daily_dbus",
-                      "expression": "`avg_daily_dbus`"
-                    },
-                    {
-                      "name": "stddev_daily_dbus",
-                      "expression": "`stddev_daily_dbus`"
-                    },
-                    {
-                      "name": "forecast_7day_dbus",
-                      "expression": "`forecast_7day_dbus`"
-                    },
-                    {
-                      "name": "forecast_30day_dbus",
-                      "expression": "`forecast_30day_dbus`"
-                    },
-                    {
-                      "name": "forecast_30day_list_cost",
-                      "expression": "`forecast_30day_list_cost`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "workspace_name",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 0,
-                    "title": "Workspace",
-                    "allowSearch": true,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "workspace_name"
-                  },
-                  {
-                    "fieldName": "last_month_total_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 1,
-                    "title": "Last Month Total DBUs",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "last_month_total_dbus"
-                  },
-                  {
-                    "fieldName": "last_month_avg_daily_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 2,
-                    "title": "Last Month Avg Daily DBUs",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "last_month_avg_daily_dbus"
-                  },
-                  {
-                    "fieldName": "avg_daily_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 1,
-                    "title": "Avg Daily DBUs",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "avg_daily_dbus"
-                  },
-                  {
-                    "fieldName": "stddev_daily_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 2,
-                    "title": "Std Dev",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "stddev_daily_dbus"
-                  },
-                  {
-                    "fieldName": "forecast_7day_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 3,
-                    "title": "7-Day Forecast DBUs",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "forecast_7day_dbus"
-                  },
-                  {
-                    "fieldName": "forecast_30day_dbus",
-                    "numberFormat": "0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 4,
-                    "title": "30-Day Forecast DBUs",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "forecast_30day_dbus"
-                  },
-                  {
-                    "fieldName": "forecast_30day_list_cost",
-                    "numberFormat": "$0,0.00",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "decimal",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 5,
-                    "title": "30-Day Forecast Cost",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "forecast_30day_list_cost"
-                  }
-                ]
-              },
-              "invisibleColumns": [],
-              "allowHTMLByDefault": false,
-              "itemsPerPage": 25,
-              "paginationSize": "default",
-              "condensed": false,
-              "withRowNumber": true,
-              "frame": {
-                "showTitle": true,
-                "title": "📊 DBU Consumption Forecast",
-                "showDescription": true,
-                "description": "Forecasts DBU consumption and costs based on 30-day averages. Helps with budget planning and capacity management."
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 25,
-            "width": 6,
-            "height": 10
           }
         }
       ],
@@ -4361,6 +4274,1166 @@
           "position": {
             "x": 0,
             "y": 20,
+            "width": 6,
+            "height": 10
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "page_model_serving",
+      "displayName": "Model Serving",
+      "layout": [
+        {
+          "widget": {
+            "name": "w_endpoint_usage_performance",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_endpoint_usage_performance",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "date",
+                      "expression": "`date`"
+                    },
+                    {
+                      "name": "total_requests",
+                      "expression": "`total_requests`"
+                    },
+                    {
+                      "name": "successful_requests",
+                      "expression": "`successful_requests`"
+                    },
+                    {
+                      "name": "avg_latency_ms",
+                      "expression": "`avg_latency_ms`"
+                    },
+                    {
+                      "name": "p95_latency_ms",
+                      "expression": "`p95_latency_ms`"
+                    },
+                    {
+                      "name": "p99_latency_ms",
+                      "expression": "`p99_latency_ms`"
+                    },
+                    {
+                      "name": "success_rate_pct",
+                      "expression": "`success_rate_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "date",
+                    "dateTimeFormat": "YYYY-MM-DD",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Date",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "total_requests",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Total Requests",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "success_rate_pct",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Success Rate %",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "p95_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "P95 Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "p99_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 6,
+                    "title": "P99 Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "📊 Endpoint Usage & Performance Overview",
+                "showDescription": true,
+                "description": "Track request volumes, latency percentiles, and success rates per endpoint over the last 30 days."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_high_latency_endpoints",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_high_latency_endpoints",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "avg_latency_ms",
+                      "expression": "`avg_latency_ms`"
+                    },
+                    {
+                      "name": "p95_latency_ms",
+                      "expression": "`p95_latency_ms`"
+                    },
+                    {
+                      "name": "request_count",
+                      "expression": "`request_count`"
+                    },
+                    {
+                      "name": "latency_status",
+                      "expression": "`latency_status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "latency_status",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Status",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "avg_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Avg Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "p95_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "P95 Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "request_count",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Request Count (7d)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "⚠️ High Latency Endpoints Alert",
+                "showDescription": true,
+                "description": "Identify endpoints with degraded performance (P95 > 1000ms). Critical: >5s, Warning: >2s."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "w_endpoint_cost_analysis",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_endpoint_cost_analysis",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "entity_name",
+                      "expression": "`entity_name`"
+                    },
+                    {
+                      "name": "entity_type",
+                      "expression": "`entity_type`"
+                    },
+                    {
+                      "name": "date",
+                      "expression": "`date`"
+                    },
+                    {
+                      "name": "total_requests",
+                      "expression": "`total_requests`"
+                    },
+                    {
+                      "name": "total_compute_hours",
+                      "expression": "`total_compute_hours`"
+                    },
+                    {
+                      "name": "estimated_dbus",
+                      "expression": "`estimated_dbus`"
+                    },
+                    {
+                      "name": "estimated_cost_usd",
+                      "expression": "`estimated_cost_usd`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "entity_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Entity Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "date",
+                    "dateTimeFormat": "YYYY-MM-DD",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Date",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "total_requests",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Requests",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "estimated_dbus",
+                    "numberFormat": "0.0000",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Est. DBUs",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "estimated_cost_usd",
+                    "numberFormat": "$0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Est. Cost (USD)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "💰 Endpoint Cost Analysis",
+                "showDescription": true,
+                "description": "Track compute costs and DBU consumption per endpoint for budget planning."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_endpoint_error_analysis",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_endpoint_error_analysis",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "status_code",
+                      "expression": "`status_code`"
+                    },
+                    {
+                      "name": "error_message",
+                      "expression": "`error_message`"
+                    },
+                    {
+                      "name": "error_count",
+                      "expression": "`error_count`"
+                    },
+                    {
+                      "name": "error_pct",
+                      "expression": "`error_pct`"
+                    },
+                    {
+                      "name": "first_occurrence",
+                      "expression": "`first_occurrence`"
+                    },
+                    {
+                      "name": "last_occurrence",
+                      "expression": "`last_occurrence`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "status_code",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Status Code",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "error_message",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Error Message",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "error_count",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Error Count",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "error_pct",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Error %",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "last_occurrence",
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Last Occurrence",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "🔍 Error Rate & Failure Analysis",
+                "showDescription": true,
+                "description": "Track and categorize endpoint errors by status code and message (last 7 days)."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 28,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_endpoint_traffic_patterns",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_endpoint_traffic_patterns",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "hour_of_day",
+                      "expression": "`hour_of_day`"
+                    },
+                    {
+                      "name": "request_count",
+                      "expression": "`request_count`"
+                    },
+                    {
+                      "name": "avg_latency_ms",
+                      "expression": "`avg_latency_ms`"
+                    },
+                    {
+                      "name": "avg_input_tokens",
+                      "expression": "`avg_input_tokens`"
+                    },
+                    {
+                      "name": "avg_output_tokens",
+                      "expression": "`avg_output_tokens`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "hour_of_day",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Hour of Day",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "request_count",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Request Count",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Avg Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_input_tokens",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Input Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_output_tokens",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Avg Output Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "📈 Endpoint Traffic Patterns",
+                "showDescription": true,
+                "description": "Identify usage patterns by hour of day to understand peak traffic times."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 38,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_model_version_comparison",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_model_version_comparison",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "entity_name",
+                      "expression": "`entity_name`"
+                    },
+                    {
+                      "name": "entity_version",
+                      "expression": "`entity_version`"
+                    },
+                    {
+                      "name": "model_deployed_at",
+                      "expression": "`model_deployed_at`"
+                    },
+                    {
+                      "name": "total_requests",
+                      "expression": "`total_requests`"
+                    },
+                    {
+                      "name": "avg_latency_ms",
+                      "expression": "`avg_latency_ms`"
+                    },
+                    {
+                      "name": "success_rate_pct",
+                      "expression": "`success_rate_pct`"
+                    },
+                    {
+                      "name": "avg_total_tokens",
+                      "expression": "`avg_total_tokens`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "entity_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Entity Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "entity_version",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Version",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "total_requests",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Total Requests",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_latency_ms",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Latency (ms)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "success_rate_pct",
+                    "numberFormat": "0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Success Rate %",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_total_tokens",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Avg Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "🔄 Model Version Performance Comparison",
+                "showDescription": true,
+                "description": "Compare performance across different served entities and model versions."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 48,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_inactive_endpoints",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_inactive_endpoints",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "endpoint_created_at",
+                      "expression": "`endpoint_created_at`"
+                    },
+                    {
+                      "name": "last_request_time",
+                      "expression": "`last_request_time`"
+                    },
+                    {
+                      "name": "days_since_last_request",
+                      "expression": "`days_since_last_request`"
+                    },
+                    {
+                      "name": "requests_last_30_days",
+                      "expression": "`requests_last_30_days`"
+                    },
+                    {
+                      "name": "avg_latency_ms",
+                      "expression": "`avg_latency_ms`"
+                    },
+                    {
+                      "name": "utilization_status",
+                      "expression": "`utilization_status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "utilization_status",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Status",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "days_since_last_request",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Days Since Last Request",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "requests_last_30_days",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Requests (30d)",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "endpoint_created_at",
+                    "dateTimeFormat": "YYYY-MM-DD",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Created At",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "last_request_time",
+                    "dateTimeFormat": "YYYY-MM-DD HH:mm",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Last Request",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "⚡ Inactive or Underutilized Endpoints",
+                "showDescription": true,
+                "description": "Identify endpoints with low or no usage for cost optimization opportunities."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 58,
+            "width": 6,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "w_token_consumption",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_token_consumption",
+                  "fields": [
+                    {
+                      "name": "endpoint_name",
+                      "expression": "`endpoint_name`"
+                    },
+                    {
+                      "name": "date",
+                      "expression": "`date`"
+                    },
+                    {
+                      "name": "total_requests",
+                      "expression": "`total_requests`"
+                    },
+                    {
+                      "name": "total_input_tokens",
+                      "expression": "`total_input_tokens`"
+                    },
+                    {
+                      "name": "total_output_tokens",
+                      "expression": "`total_output_tokens`"
+                    },
+                    {
+                      "name": "total_tokens",
+                      "expression": "`total_tokens`"
+                    },
+                    {
+                      "name": "avg_input_tokens",
+                      "expression": "`avg_input_tokens`"
+                    },
+                    {
+                      "name": "avg_output_tokens",
+                      "expression": "`avg_output_tokens`"
+                    },
+                    {
+                      "name": "estimated_token_cost_usd",
+                      "expression": "`estimated_token_cost_usd`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "endpoint_name",
+                    "booleanValues": ["false", "true"],
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Endpoint Name",
+                    "allowSearch": true,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "date",
+                    "dateTimeFormat": "YYYY-MM-DD",
+                    "booleanValues": ["false", "true"],
+                    "type": "datetime",
+                    "displayAs": "datetime",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Date",
+                    "allowSearch": false,
+                    "alignContent": "left"
+                  },
+                  {
+                    "fieldName": "total_requests",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Requests",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "total_tokens",
+                    "numberFormat": "0,0",
+                    "booleanValues": ["false", "true"],
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Total Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_input_tokens",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Avg Input Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "avg_output_tokens",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Avg Output Tokens",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "estimated_token_cost_usd",
+                    "numberFormat": "$0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 6,
+                    "title": "Est. Token Cost",
+                    "allowSearch": false,
+                    "alignContent": "right"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "🎯 Token Consumption & LLM Usage",
+                "showDescription": true,
+                "description": "Track token usage for LLM endpoints with estimated costs (last 30 days)."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 68,
             "width": 6,
             "height": 10
           }
