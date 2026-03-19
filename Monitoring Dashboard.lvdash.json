@@ -3113,6 +3113,247 @@
             "width": 6,
             "height": 12
           }
+        },
+        {
+          "widget": {
+            "name": "w_cluster_startup_time",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ds_cluster_startup_time",
+                  "fields": [
+                    {
+                      "name": "workspace_name",
+                      "expression": "`workspace_name`"
+                    },
+                    {
+                      "name": "cluster_source",
+                      "expression": "`cluster_source`"
+                    },
+                    {
+                      "name": "driver_node_type",
+                      "expression": "`driver_node_type`"
+                    },
+                    {
+                      "name": "worker_node_type",
+                      "expression": "`worker_node_type`"
+                    },
+                    {
+                      "name": "cluster_count",
+                      "expression": "`cluster_count`"
+                    },
+                    {
+                      "name": "avg_startup_seconds",
+                      "expression": "`avg_startup_seconds`"
+                    },
+                    {
+                      "name": "p95_startup_seconds",
+                      "expression": "`p95_startup_seconds`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "workspace_name",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 0,
+                    "title": "Workspace",
+                    "allowSearch": true,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "workspace_name"
+                  },
+                  {
+                    "fieldName": "cluster_source",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 1,
+                    "title": "Source",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "cluster_source"
+                  },
+                  {
+                    "fieldName": "driver_node_type",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Driver Node",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "driver_node_type"
+                  },
+                  {
+                    "fieldName": "worker_node_type",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 3,
+                    "title": "Worker Node",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "worker_node_type"
+                  },
+                  {
+                    "fieldName": "cluster_count",
+                    "numberFormat": "0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "integer",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 4,
+                    "title": "Count",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "cluster_count"
+                  },
+                  {
+                    "fieldName": "avg_startup_seconds",
+                    "numberFormat": "0.0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 5,
+                    "title": "Avg Startup (sec)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "avg_startup_seconds"
+                  },
+                  {
+                    "fieldName": "p95_startup_seconds",
+                    "numberFormat": "0.0",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 6,
+                    "title": "P95 Startup (sec)",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "p95_startup_seconds"
+                  }
+                ]
+              },
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": false,
+              "withRowNumber": true,
+              "frame": {
+                "showTitle": true,
+                "title": "⚡ Cluster Startup Time Analysis",
+                "showDescription": true,
+                "description": "Measures actual cluster startup times by configuration. Shows avg and P95 startup seconds (30-day view)."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 10
+          }
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS"
@@ -3389,248 +3630,14 @@
             "width": 6,
             "height": 8
           }
-        },
-        {
-          "widget": {
-            "name": "w_cluster_startup_time",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_cluster_startup_time",
-                  "fields": [
-                    {
-                      "name": "workspace_name",
-                      "expression": "`workspace_name`"
-                    },
-                    {
-                      "name": "cluster_source",
-                      "expression": "`cluster_source`"
-                    },
-                    {
-                      "name": "driver_node_type",
-                      "expression": "`driver_node_type`"
-                    },
-                    {
-                      "name": "worker_node_type",
-                      "expression": "`worker_node_type`"
-                    },
-                    {
-                      "name": "cluster_count",
-                      "expression": "`cluster_count`"
-                    },
-                    {
-                      "name": "avg_startup_seconds",
-                      "expression": "`avg_startup_seconds`"
-                    },
-                    {
-                      "name": "p95_startup_seconds",
-                      "expression": "`p95_startup_seconds`"
-                    }
-                  ],
-                  "disaggregated": true
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "table",
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "workspace_name",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 0,
-                    "title": "Workspace",
-                    "allowSearch": true,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "workspace_name"
-                  },
-                  {
-                    "fieldName": "cluster_source",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 1,
-                    "title": "Source",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "cluster_source"
-                  },
-                  {
-                    "fieldName": "driver_node_type",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 2,
-                    "title": "Driver Node",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "driver_node_type"
-                  },
-                  {
-                    "fieldName": "worker_node_type",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "string",
-                    "displayAs": "string",
-                    "visible": true,
-                    "order": 3,
-                    "title": "Worker Node",
-                    "allowSearch": false,
-                    "alignContent": "left",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "worker_node_type"
-                  },
-                  {
-                    "fieldName": "cluster_count",
-                    "numberFormat": "0",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "integer",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 4,
-                    "title": "Count",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "cluster_count"
-                  },
-                  {
-                    "fieldName": "avg_startup_seconds",
-                    "numberFormat": "0.0",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "float",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 5,
-                    "title": "Avg Startup (sec)",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "avg_startup_seconds"
-                  },
-                  {
-                    "fieldName": "p95_startup_seconds",
-                    "numberFormat": "0.0",
-                    "booleanValues": ["false", "true"],
-                    "imageUrlTemplate": "{{ @ }}",
-                    "imageTitleTemplate": "{{ @ }}",
-                    "imageWidth": "",
-                    "imageHeight": "",
-                    "linkUrlTemplate": "{{ @ }}",
-                    "linkTextTemplate": "{{ @ }}",
-                    "linkTitleTemplate": "{{ @ }}",
-                    "linkOpenInNewTab": true,
-                    "type": "float",
-                    "displayAs": "number",
-                    "visible": true,
-                    "order": 6,
-                    "title": "P95 Startup (sec)",
-                    "allowSearch": false,
-                    "alignContent": "right",
-                    "allowHTML": false,
-                    "highlightLinks": false,
-                    "useMonospaceFont": false,
-                    "preserveWhitespace": false,
-                    "displayName": "p95_startup_seconds"
-                  }
-                ]
-              },
-              "invisibleColumns": [],
-              "allowHTMLByDefault": false,
-              "itemsPerPage": 25,
-              "paginationSize": "default",
-              "condensed": false,
-              "withRowNumber": true,
-              "frame": {
-                "showTitle": true,
-                "title": "⚡ Cluster Startup Time Analysis",
-                "showDescription": true,
-                "description": "Measures actual cluster startup times by configuration. Shows avg and P95 startup seconds (30-day view)."
-              }
-            }
-          },
-          "position": {
-            "x": 0,
-            "y": 8,
-            "width": 6,
-            "height": 10
-          }
-        },
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "page_admin_operations",
+      "displayName": "Admin & Operations",
+      "layout": [
         {
           "widget": {
             "name": "w_dbu_consumption_forecast",
@@ -3707,7 +3714,7 @@
                     "displayName": "workspace_name"
                   },
                   {
-                    "fieldName": "avg_daily_dbus",
+                    "fieldName": "last_month_total_dbus",
                     "numberFormat": "0,0.00",
                     "booleanValues": ["false", "true"],
                     "imageUrlTemplate": "{{ @ }}",
@@ -3722,6 +3729,56 @@
                     "displayAs": "number",
                     "visible": true,
                     "order": 1,
+                    "title": "Last Month Total DBUs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_month_total_dbus"
+                  },
+                  {
+                    "fieldName": "last_month_avg_daily_dbus",
+                    "numberFormat": "0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 2,
+                    "title": "Last Month Avg Daily DBUs",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "displayName": "last_month_avg_daily_dbus"
+                  },
+                  {
+                    "fieldName": "avg_daily_dbus",
+                    "numberFormat": "0,0.00",
+                    "booleanValues": ["false", "true"],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "decimal",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 3,
                     "title": "Avg Daily DBUs",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -3746,7 +3803,7 @@
                     "type": "decimal",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 2,
+                    "order": 4,
                     "title": "Std Dev",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -3771,7 +3828,7 @@
                     "type": "decimal",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 3,
+                    "order": 5,
                     "title": "7-Day Forecast DBUs",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -3796,7 +3853,7 @@
                     "type": "decimal",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 4,
+                    "order": 6,
                     "title": "30-Day Forecast DBUs",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -3821,7 +3878,7 @@
                     "type": "decimal",
                     "displayAs": "number",
                     "visible": true,
-                    "order": 5,
+                    "order": 7,
                     "title": "30-Day Forecast Cost",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -3849,7 +3906,7 @@
           },
           "position": {
             "x": 0,
-            "y": 18,
+            "y": 8,
             "width": 6,
             "height": 10
           }
@@ -4063,7 +4120,7 @@
           },
           "position": {
             "x": 0,
-            "y": 28,
+            "y": 18,
             "width": 6,
             "height": 10
           }
@@ -4310,7 +4367,7 @@
           },
           "position": {
             "x": 0,
-            "y": 38,
+            "y": 28,
             "width": 6,
             "height": 10
           }
