@@ -631,7 +631,7 @@
       "queryLines": [
         "SELECT \n",
         "  endpoint_name,\n",
-        "  DATE_TRUNC('day', request_timestamp) as date,\n",
+        "  DATE_TRUNC('day', request_time) as date,\n",
         "  COUNT(*) as total_requests,\n",
         "  SUM(CASE WHEN status_code = 200 THEN 1 ELSE 0 END) as successful_requests,\n",
         "  ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms,\n",
@@ -639,8 +639,8 @@
         "  ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY execution_duration_ms), 2) as p99_latency_ms,\n",
         "  ROUND(100.0 * SUM(CASE WHEN status_code = 200 THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate_pct\n",
         "FROM system.serving.endpoint_usage\n",
-        "WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
-        "GROUP BY endpoint_name, DATE_TRUNC('day', request_timestamp)\n",
+        "WHERE request_time >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "GROUP BY endpoint_name, DATE_TRUNC('day', request_time)\n",
         "ORDER BY date DESC, total_requests DESC"
       ]
     },
@@ -655,7 +655,7 @@
         "    ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY execution_duration_ms), 2) as p95_latency_ms,\n",
         "    COUNT(*) as request_count\n",
         "  FROM system.serving.endpoint_usage\n",
-        "  WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "  WHERE request_time >= CURRENT_DATE() - INTERVAL '7' DAY\n",
         "  GROUP BY endpoint_name\n",
         ")\n",
         "SELECT \n",
@@ -681,7 +681,7 @@
         "  e.endpoint_name,\n",
         "  se.entity_name,\n",
         "  se.entity_type,\n",
-        "  DATE_TRUNC('day', e.request_timestamp) as date,\n",
+        "  DATE_TRUNC('day', e.request_time) as date,\n",
         "  COUNT(*) as total_requests,\n",
         "  ROUND(SUM(e.execution_duration_ms) / 1000.0 / 3600.0, 4) as total_compute_hours,\n",
         "  ROUND(SUM(e.execution_duration_ms) / 1000.0 / 3600.0 * 0.75, 4) as estimated_dbus,\n",
@@ -689,8 +689,8 @@
         "FROM system.serving.endpoint_usage e\n",
         "LEFT JOIN system.serving.served_entities se \n",
         "  ON e.endpoint_name = se.endpoint_name\n",
-        "WHERE e.request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
-        "GROUP BY e.endpoint_name, se.entity_name, se.entity_type, DATE_TRUNC('day', e.request_timestamp)\n",
+        "WHERE e.request_time >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "GROUP BY e.endpoint_name, se.entity_name, se.entity_type, DATE_TRUNC('day', e.request_time)\n",
         "ORDER BY date DESC, estimated_cost_usd DESC"
       ]
     },
@@ -704,11 +704,11 @@
         "  error_message,\n",
         "  COUNT(*) as error_count,\n",
         "  ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER (PARTITION BY endpoint_name), 2) as error_pct,\n",
-        "  MIN(request_timestamp) as first_occurrence,\n",
-        "  MAX(request_timestamp) as last_occurrence\n",
+        "  MIN(request_time) as first_occurrence,\n",
+        "  MAX(request_time) as last_occurrence\n",
         "FROM system.serving.endpoint_usage\n",
         "WHERE \n",
-        "  request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "  request_time >= CURRENT_DATE() - INTERVAL '7' DAY\n",
         "  AND status_code != 200\n",
         "GROUP BY endpoint_name, status_code, error_message\n",
         "ORDER BY error_count DESC"
@@ -720,14 +720,14 @@
       "queryLines": [
         "SELECT \n",
         "  endpoint_name,\n",
-        "  HOUR(request_timestamp) as hour_of_day,\n",
+        "  HOUR(request_time) as hour_of_day,\n",
         "  COUNT(*) as request_count,\n",
         "  ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms,\n",
         "  ROUND(AVG(input_tokens), 0) as avg_input_tokens,\n",
         "  ROUND(AVG(output_tokens), 0) as avg_output_tokens\n",
         "FROM system.serving.endpoint_usage\n",
-        "WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '7' DAY\n",
-        "GROUP BY endpoint_name, HOUR(request_timestamp)\n",
+        "WHERE request_time >= CURRENT_DATE() - INTERVAL '7' DAY\n",
+        "GROUP BY endpoint_name, HOUR(request_time)\n",
         "ORDER BY endpoint_name, hour_of_day"
       ]
     },
@@ -747,7 +747,7 @@
         "FROM system.serving.endpoint_usage e\n",
         "INNER JOIN system.serving.served_entities se \n",
         "  ON e.endpoint_name = se.endpoint_name\n",
-        "WHERE e.request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "WHERE e.request_time >= CURRENT_DATE() - INTERVAL '30' DAY\n",
         "GROUP BY e.endpoint_name, se.entity_name, se.entity_version, se.creation_timestamp\n",
         "ORDER BY e.endpoint_name, total_requests DESC"
       ]
@@ -759,11 +759,11 @@
         "WITH recent_usage AS (\n",
         "  SELECT \n",
         "    endpoint_name,\n",
-        "    MAX(request_timestamp) as last_request_time,\n",
+        "    MAX(request_time) as last_request_time,\n",
         "    COUNT(*) as total_requests_30d,\n",
         "    ROUND(AVG(execution_duration_ms), 2) as avg_latency_ms\n",
         "  FROM system.serving.endpoint_usage\n",
-        "  WHERE request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "  WHERE request_time >= CURRENT_DATE() - INTERVAL '30' DAY\n",
         "  GROUP BY endpoint_name\n",
         "),\n",
         "all_endpoints AS (\n",
@@ -795,7 +795,7 @@
       "queryLines": [
         "SELECT \n",
         "  endpoint_name,\n",
-        "  DATE_TRUNC('day', request_timestamp) as date,\n",
+        "  DATE_TRUNC('day', request_time) as date,\n",
         "  COUNT(*) as total_requests,\n",
         "  SUM(input_tokens) as total_input_tokens,\n",
         "  SUM(output_tokens) as total_output_tokens,\n",
@@ -805,9 +805,9 @@
         "  ROUND(SUM(input_tokens) * 0.000001 + SUM(output_tokens) * 0.000002, 2) as estimated_token_cost_usd\n",
         "FROM system.serving.endpoint_usage\n",
         "WHERE \n",
-        "  request_timestamp >= CURRENT_DATE() - INTERVAL '30' DAY\n",
+        "  request_time >= CURRENT_DATE() - INTERVAL '30' DAY\n",
         "  AND (input_tokens > 0 OR output_tokens > 0)\n",
-        "GROUP BY endpoint_name, DATE_TRUNC('day', request_timestamp)\n",
+        "GROUP BY endpoint_name, DATE_TRUNC('day', request_time)\n",
         "ORDER BY date DESC, total_tokens DESC"
       ]
     }
